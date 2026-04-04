@@ -1,0 +1,22 @@
+# Web Framework
+fastapi>=0.110.0
+uvicorn>=0.27.1
+
+# Database
+sqlalchemy>=2.0.27
+psycopg2-binary>=2.9.9 
+
+# Security & Logic
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+bcrypt>=4.0.0
+pydantic>=2.6.3
+pydantic-settings>=2.2.1
+
+# Math/AI (Updated for compatibility with newer Python)
+numpy>=2.1.0
+pandas>=2.2.1
+scikit-learn>=1.4.1
+
+# Utilities
+python-dotenv>=1.0.1
