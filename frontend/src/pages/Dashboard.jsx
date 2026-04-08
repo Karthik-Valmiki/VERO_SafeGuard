@@ -4,18 +4,18 @@ import { useAuth } from "../context/AuthContext"
 import { getMyDashboard, getQuote } from "../api"
 import {
   Shield, TrendingUp, CloudRain, Wifi, AlertTriangle,
-  ArrowRight, RefreshCw, LogOut, MapPin, Clock, ChevronRight, Zap
+  ArrowRight, RefreshCw, LogOut, MapPin, Clock, ChevronRight, Zap, BarChart2
 } from "lucide-react"
 import SimulatorBanner from "../components/SimulatorBanner"
 
 const RISK_COLORS = {
-  LOW:    { bar: "bg-green-500",  text: "text-green-400",  label: "Low Risk" },
+  LOW: { bar: "bg-green-500", text: "text-green-400", label: "Low Risk" },
   MEDIUM: { bar: "bg-yellow-500", text: "text-yellow-400", label: "Moderate" },
-  HIGH:   { bar: "bg-red-500",    text: "text-red-400",    label: "High Risk" },
+  HIGH: { bar: "bg-red-500", text: "text-red-400", label: "High Risk" },
 }
 function getRiskLevel(m) {
   if (m >= 1.25) return "HIGH"
-  if (m >= 1.1)  return "MEDIUM"
+  if (m >= 1.1) return "MEDIUM"
   return "LOW"
 }
 
@@ -42,9 +42,9 @@ function RiskForecastCard({ quote }) {
         <span>Risk {m.toFixed(2)}×</span>
       </div>
       <p className="text-[11px] text-gray-500 mt-1.5">
-        {level === "HIGH"   && "⚠ Disruptions likely this week. Coverage recommended."}
+        {level === "HIGH" && "⚠ Disruptions likely this week. Coverage recommended."}
         {level === "MEDIUM" && "Moderate disruption probability in your zone."}
-        {level === "LOW"    && "Conditions look stable. Stay protected anyway."}
+        {level === "LOW" && "Conditions look stable. Stay protected anyway."}
       </p>
     </div>
   )
@@ -89,10 +89,10 @@ function UpsellBanner({ quote, onActivate }) {
       </div>
       <div className="grid grid-cols-2 gap-2">
         {[
-          { icon: CloudRain,     text: "Rain & hailstorm" },
-          { icon: Wifi,          text: "App outages" },
+          { icon: CloudRain, text: "Rain & hailstorm" },
+          { icon: Wifi, text: "App outages" },
           { icon: AlertTriangle, text: "AQI spikes" },
-          { icon: Shield,        text: "Bandh & curfew" },
+          { icon: Shield, text: "Bandh & curfew" },
         ].map(({ icon: Icon, text }) => (
           <div key={text} className="flex items-center gap-2 bg-dark-800/60 border border-dark-700/50 rounded-xl px-3 py-2.5">
             <Icon size={13} className="text-brand-400 shrink-0" />
@@ -107,8 +107,8 @@ function UpsellBanner({ quote, onActivate }) {
 
 function ActivePolicyCard({ policy, onViewPolicy }) {
   const used = Number(policy.total_paid_out || 0)
-  const cap  = Number(policy.weekly_cap || 1)
-  const pct  = Math.min(100, (used / cap) * 100)
+  const cap = Number(policy.weekly_cap || 1)
+  const pct = Math.min(100, (used / cap) * 100)
   return (
     <div className="card !p-4 border-brand-500/20 bg-gradient-to-br from-brand-500/5 to-dark-800">
       <div className="flex items-center justify-between mb-3">
@@ -148,8 +148,8 @@ function ActivePolicyCard({ policy, onViewPolicy }) {
 export default function Dashboard() {
   const { rider, logout } = useAuth()
   const navigate = useNavigate()
-  const [dash, setDash]       = useState(null)
-  const [quote, setQuote]     = useState(null)
+  const [dash, setDash] = useState(null)
+  const [quote, setQuote] = useState(null)
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async (silent = false) => {
@@ -168,12 +168,12 @@ export default function Dashboard() {
 
   if (!rider) { navigate("/login"); return null }
 
-  const policy    = dash?.policy
-  const riderD    = dash?.rider
-  const hasPol    = policy?.status === "ACTIVE" || policy?.status === "PENDING"
+  const policy = dash?.policy
+  const riderD = dash?.rider
+  const hasPol = policy?.status === "ACTIVE" || policy?.status === "PENDING"
   const isPending = policy?.status === "PENDING"
-  const hour      = new Date().getHours()
-  const greeting  = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"
+  const hour = new Date().getHours()
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"
 
   return (
     <div className="flex flex-col min-h-full bg-dark-900 text-white">
@@ -183,6 +183,9 @@ export default function Dashboard() {
           <Shield size={18} className="text-brand-500" /> VERO
         </span>
         <div className="flex items-center gap-2">
+          <button onClick={() => navigate("/admin")} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-red-500/10 border border-red-500/25 text-red-400 rounded-lg text-[11px] font-bold hover:bg-red-500/20 transition-all">
+            <BarChart2 size={12} /> Admin
+          </button>
           <button onClick={() => navigate("/simulator")} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-yellow-500/10 border border-yellow-500/25 text-yellow-400 rounded-lg text-[11px] font-bold hover:bg-yellow-500/20 transition-all">
             <Zap size={12} /> Simulate
           </button>
@@ -228,9 +231,9 @@ export default function Dashboard() {
 
               <div className="grid grid-cols-3 gap-2">
                 {[
-                  { label: "Tenure",  value: `${riderD?.r_breakdown?.weeks_tracked || 0}w`, sub: "weeks active" },
+                  { label: "Tenure", value: `${riderD?.r_breakdown?.weeks_tracked || 0}w`, sub: "weeks active" },
                   { label: "R-Score", value: riderD?.is_new_user ? "—" : Number(riderD?.reliability_score || 0).toFixed(2), sub: "reliability" },
-                  { label: "Shift",   value: rider?.shift_start?.slice(0,5) || "—", sub: "shift start" },
+                  { label: "Shift", value: rider?.shift_start?.slice(0, 5) || "—", sub: "shift start" },
                 ].map(({ label, value, sub }) => (
                   <div key={label} className="bg-dark-800/60 border border-dark-700/50 rounded-xl p-3 text-center">
                     <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">{label}</p>
@@ -261,8 +264,8 @@ export default function Dashboard() {
                 <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-2 px-1">Quick actions</p>
                 <div className="space-y-2">
                   {[
-                    { label: "View Policy Details", sub: hasPol ? "Active this week" : "No active policy", path: "/policy",  icon: Shield },
-                    { label: "Claims & Payouts",     sub: "Your payout history",                           path: "/claims",  icon: TrendingUp },
+                    { label: "View Policy Details", sub: hasPol ? "Active this week" : "No active policy", path: "/policy", icon: Shield },
+                    { label: "Claims & Payouts", sub: "Your payout history", path: "/claims", icon: TrendingUp },
                   ].map(({ label, sub, path, icon: Icon }) => (
                     <button key={label} onClick={() => navigate(path)}
                       className="w-full flex items-center justify-between bg-dark-800/60 border border-dark-700/50 rounded-xl px-4 py-3 hover:border-dark-500 hover:bg-dark-800 transition-all group">

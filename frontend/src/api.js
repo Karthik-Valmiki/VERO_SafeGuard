@@ -14,8 +14,13 @@ export const register   = (data)                  => api.post("/auth/register", 
 export const login      = (data)                  => api.post("/auth/login",       data)
 export const getQuote   = ()                      => api.get("/policies/quote")
 export const purchasePolicy = ()                  => api.post("/policies/purchase")
+export const createRazorpayOrder = ()             => api.post("/policies/create-order")
+export const verifyRazorpayPayment = (data)       => api.post("/policies/verify-payment", data)
 export const getMyPolicy    = ()                  => api.get("/policies/my-policy")
 export const getMyDashboard = ()                  => api.get("/dashboards/rider/me")
+export const getAdminSummary = ()                 => api.get("/dashboards/admin/summary")
+export const getAdminPredictive = ()              => api.get("/dashboards/admin/predictive")
+export const getAdminZones = ()                   => api.get("/dashboards/admin/zones")
 export const simulateTrigger = (data)             => api.post("/triggers/simulate", data)
 export const logActivity     = (zone_id)           => api.post(`/tracking/activity?zone_id=${zone_id}`)
 

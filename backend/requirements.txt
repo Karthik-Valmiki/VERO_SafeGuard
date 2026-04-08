@@ -20,3 +20,7 @@ scikit-learn>=1.4.1
 
 # Utilities
 python-dotenv>=1.0.1
+
+# Payment gateway
+razorpay>=1.4.1
+httpx>=0.27.0

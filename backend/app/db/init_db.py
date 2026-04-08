@@ -42,15 +42,38 @@ CITIES = [
 ]
 
 # zone_name, city_name, risk_multiplier
+# Multiple zones per city so zone-level premium differentiation is visible.
+# Higher multiplier = more disruption-prone = higher premium for riders there.
 ZONES = [
-    ("Indiranagar", "Bengaluru", 1.15),
-    ("T Nagar", "Chennai", 1.20),
-    ("Adyar", "Chennai", 1.25),
-    ("Bandra", "Mumbai", 1.25),
-    ("Andheri", "Mumbai", 1.20),
-    ("Connaught Place", "Delhi", 1.20),
-    ("Lajpat Nagar", "Delhi", 1.15),
-    ("Hyderabad Central", "Hyderabad", 1.05),
+    # Bengaluru — 3 zones with distinct risk profiles
+    ("Indiranagar",      "Bengaluru", 1.20),
+    ("Koramangala",      "Bengaluru", 1.15),
+    ("Whitefield",       "Bengaluru", 1.05),
+    # Chennai — 4 zones
+    ("T Nagar",          "Chennai",   1.20),
+    ("Adyar",            "Chennai",   1.25),
+    ("Velachery",        "Chennai",   1.15),
+    ("Anna Nagar",       "Chennai",   1.10),
+    # Mumbai — 4 zones
+    ("Bandra",           "Mumbai",    1.30),
+    ("Andheri",          "Mumbai",    1.20),
+    ("Dadar",            "Mumbai",    1.15),
+    ("Borivali",         "Mumbai",    1.05),
+    # Delhi — 4 zones
+    ("Connaught Place",  "Delhi",     1.25),
+    ("Lajpat Nagar",     "Delhi",     1.20),
+    ("Rohini",           "Delhi",     1.10),
+    ("Dwarka",           "Delhi",     1.05),
+    # Hyderabad — 3 zones
+    ("Hyderabad Central","Hyderabad", 1.10),
+    ("Banjara Hills",    "Hyderabad", 1.15),
+    ("Secunderabad",     "Hyderabad", 1.05),
+    # Pune — 2 zones
+    ("Koregaon Park",    "Pune",      1.15),
+    ("Kothrud",          "Pune",      1.05),
+    # Kolkata — 2 zones
+    ("Park Street",      "Kolkata",   1.20),
+    ("Salt Lake",        "Kolkata",   1.10),
 ]
 
 DEMO_PASSWORD = "vero1234"
@@ -61,8 +84,8 @@ DEMO_RIDERS = [
         "phone": "+919000000001",
         "platform": "Zomato",
         "city": "Mumbai",
-        "zone": "Bandra",
-        "upi": "arjun.mehta@upi",
+        "zone": "Bandra",          # highest risk zone in Mumbai — 1.30×
+        "upi": "arjun.mehta@okaxis",
         "shift": {"start": "08:00", "end": "22:00"},
         "history": [
             {"offset": 1, "tu": 0.95, "de": 0.93, "cr": 0.96},
@@ -76,8 +99,8 @@ DEMO_RIDERS = [
         "phone": "+919000000002",
         "platform": "Swiggy",
         "city": "Bengaluru",
-        "zone": "Indiranagar",
-        "upi": "priya.nair@upi",
+        "zone": "Indiranagar",      # highest risk zone in Bengaluru — 1.20×
+        "upi": "priya.nair@oksbi",
         "shift": {"start": "10:00", "end": "20:00"},
         "history": [
             {"offset": 1, "tu": 0.60, "de": 0.55, "cr": 0.58},
@@ -91,8 +114,8 @@ DEMO_RIDERS = [
         "phone": "+919000000003",
         "platform": "Zomato",
         "city": "Delhi",
-        "zone": "Connaught Place",
-        "upi": "ravi.kumar@upi",
+        "zone": "Connaught Place",  # highest risk zone in Delhi — 1.25×
+        "upi": "ravi.kumar@okicici",
         "shift": {"start": "07:00", "end": "23:00"},
         "history": [
             {"offset": 1, "tu": 0.35, "de": 0.30, "cr": 0.72},
@@ -106,8 +129,8 @@ DEMO_RIDERS = [
         "phone": "+919000000004",
         "platform": "Swiggy",
         "city": "Chennai",
-        "zone": "T Nagar",
-        "upi": "deepa.krishnan@upi",
+        "zone": "Anna Nagar",       # lower risk zone in Chennai — 1.10×
+        "upi": "deepa.krishnan@ybl",
         "shift": {"start": "11:00", "end": "23:00"},
         "history": [
             {"offset": 1, "tu": 0.78, "de": 0.74, "cr": 0.80},
@@ -121,8 +144,8 @@ DEMO_RIDERS = [
         "phone": "+919000000005",
         "platform": "Zomato",
         "city": "Hyderabad",
-        "zone": "Hyderabad Central",
-        "upi": "suresh.babu@upi",
+        "zone": "Banjara Hills",    # mid risk zone in Hyderabad — 1.15×
+        "upi": "suresh.babu@paytm",
         "shift": {"start": "09:00", "end": "21:00"},
         "history": [
             {"offset": 1, "tu": 0.50, "de": 0.45, "cr": 0.62},

@@ -260,11 +260,15 @@ def register(data: RiderCreate, db: Session = Depends(get_db)):
     if not city:
         raise HTTPException(status_code=400, detail=f"City '{data.city}' not supported")
 
-    # Assign zone — use existing zone for city or create default
-    zone = (
-        db.query(models.GeoZone).filter(models.GeoZone.city_id == city.city_id).first()
+    # Assign zone — pick the median-risk zone for the city so new riders
+    # get a representative premium, not the extreme high or low.
+    city_zones = (
+        db.query(models.GeoZone)
+        .filter(models.GeoZone.city_id == city.city_id)
+        .order_by(models.GeoZone.base_risk_multiplier)
+        .all()
     )
-    if not zone:
+    if not city_zones:
         zone = models.GeoZone(
             city_id=city.city_id,
             zone_name=f"{city.city_name} Central",
@@ -272,6 +276,9 @@ def register(data: RiderCreate, db: Session = Depends(get_db)):
         )
         db.add(zone)
         db.flush()
+    else:
+        # Pick the middle zone by risk multiplier
+        zone = city_zones[len(city_zones) // 2]
 
     rider = models.RiderProfile(
         full_name=data.name,

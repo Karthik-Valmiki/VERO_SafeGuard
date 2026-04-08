@@ -10,6 +10,7 @@ import Policy     from "./pages/Policy"
 import Claims     from "./pages/Claims"
 import Simulator  from "./pages/Simulator"
 import Notifications from "./pages/Notifications"
+import AdminDashboard from "./pages/AdminDashboard"
 import PhoneFrame from "./components/PhoneFrame"
 
 function PrivateRoute({ children }) {
@@ -33,6 +34,7 @@ export default function App() {
             <Route path="/simulator"  element={<PrivateRoute><Simulator /></PrivateRoute>} />
             <Route path="/notifications" element={<PrivateRoute><Notifications /></PrivateRoute>} />
             <Route path="/profile"    element={<PrivateRoute><Profile /></PrivateRoute>} />
+            <Route path="/admin"      element={<AdminDashboard />} />
             <Route path="*"           element={<Navigate to="/" replace />} />
           </Routes>
         </PhoneFrame>
