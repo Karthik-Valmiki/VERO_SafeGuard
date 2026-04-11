@@ -1,3 +1,4 @@
+import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 SECRET_KEY = "VERO_SRMIST_2026_SECRET"
@@ -9,8 +10,11 @@ DEMO_ACTIVATION_SECONDS = 20
 # Demo mode: each payout interval is 10 seconds (real = 30 minutes)
 DEMO_PAYOUT_INTERVAL_SECONDS = 10
 # Number of demo intervals per disruption hour (real = 2 per hour i.e. every 30min)
-# In demo: 1 real-second = 1 real-minute, so 1 disruption-hour = 60 demo-seconds = 6 intervals of 10s
 DEMO_SECONDS_PER_REAL_MINUTE = 1
+
+# Razorpay — test keys (safe to commit for demo; replace with real keys in production)
+RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "")
+RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "")
 
 
 class Settings(BaseSettings):

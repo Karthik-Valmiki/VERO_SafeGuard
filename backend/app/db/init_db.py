@@ -8,6 +8,7 @@ Seeds:
 """
 
 import math
+import random
 import bcrypt
 from datetime import date, timedelta, datetime, timezone
 from sqlalchemy.orm import Session
@@ -42,15 +43,47 @@ CITIES = [
 ]
 
 # zone_name, city_name, risk_multiplier
+# Multiple zones per city so zone-level premium differentiation is visible.
+# Higher multiplier = more disruption-prone = higher premium for riders there.
 ZONES = [
-    ("Indiranagar", "Bengaluru", 1.15),
-    ("T Nagar", "Chennai", 1.20),
-    ("Adyar", "Chennai", 1.25),
-    ("Bandra", "Mumbai", 1.25),
-    ("Andheri", "Mumbai", 1.20),
-    ("Connaught Place", "Delhi", 1.20),
-    ("Lajpat Nagar", "Delhi", 1.15),
-    ("Hyderabad Central", "Hyderabad", 1.05),
+    # Bengaluru — 3 zones with distinct risk profiles
+    ("Indiranagar",      "Bengaluru", 1.20),
+    ("Koramangala",      "Bengaluru", 1.15),
+    ("Whitefield",       "Bengaluru", 1.05),
+    # Chennai — 4 zones
+    ("T Nagar",          "Chennai",   1.20),
+    ("Adyar",            "Chennai",   1.25),
+    ("Velachery",        "Chennai",   1.15),
+    ("Anna Nagar",       "Chennai",   1.10),
+    # Mumbai — 4 zones
+    ("Bandra",           "Mumbai",    1.30),
+    ("Andheri",          "Mumbai",    1.20),
+    ("Dadar",            "Mumbai",    1.15),
+    ("Borivali",         "Mumbai",    1.05),
+    # Delhi — 4 zones
+    ("Connaught Place",  "Delhi",     1.25),
+    ("Lajpat Nagar",     "Delhi",     1.20),
+    ("Rohini",           "Delhi",     1.10),
+    ("Dwarka",           "Delhi",     1.05),
+    # Hyderabad — 3 zones
+    ("Hyderabad Central","Hyderabad", 1.10),
+    ("Banjara Hills",    "Hyderabad", 1.15),
+    ("Secunderabad",     "Hyderabad", 1.05),
+    # Pune — 2 zones
+    ("Koregaon Park",    "Pune",      1.15),
+    ("Kothrud",          "Pune",      1.05),
+    # Kolkata — 2 zones
+    ("Park Street",      "Kolkata",   1.20),
+    ("Salt Lake",        "Kolkata",   1.10),
+    # Gurgaon — 2 zones
+    ("Cyber City",       "Gurgaon",   1.25),
+    ("Udyog Vihar",      "Gurgaon",   1.15),
+    # Vizag — 2 zones
+    ("MVP Colony",       "Vizag",     1.15),
+    ("Gajuwaka",         "Vizag",     1.05),
+    # Ahmedabad — 2 zones
+    ("Navrangpura",      "Ahmedabad", 1.15),
+    ("Satellite",        "Ahmedabad", 1.05),
 ]
 
 DEMO_PASSWORD = "vero1234"
@@ -61,8 +94,8 @@ DEMO_RIDERS = [
         "phone": "+919000000001",
         "platform": "Zomato",
         "city": "Mumbai",
-        "zone": "Bandra",
-        "upi": "arjun.mehta@upi",
+        "zone": "Bandra",          # highest risk zone in Mumbai — 1.30×
+        "upi": "arjun.mehta@okaxis",
         "shift": {"start": "08:00", "end": "22:00"},
         "history": [
             {"offset": 1, "tu": 0.95, "de": 0.93, "cr": 0.96},
@@ -76,8 +109,8 @@ DEMO_RIDERS = [
         "phone": "+919000000002",
         "platform": "Swiggy",
         "city": "Bengaluru",
-        "zone": "Indiranagar",
-        "upi": "priya.nair@upi",
+        "zone": "Indiranagar",      # highest risk zone in Bengaluru — 1.20×
+        "upi": "priya.nair@oksbi",
         "shift": {"start": "10:00", "end": "20:00"},
         "history": [
             {"offset": 1, "tu": 0.60, "de": 0.55, "cr": 0.58},
@@ -91,8 +124,8 @@ DEMO_RIDERS = [
         "phone": "+919000000003",
         "platform": "Zomato",
         "city": "Delhi",
-        "zone": "Connaught Place",
-        "upi": "ravi.kumar@upi",
+        "zone": "Connaught Place",  # highest risk zone in Delhi — 1.25×
+        "upi": "ravi.kumar@okicici",
         "shift": {"start": "07:00", "end": "23:00"},
         "history": [
             {"offset": 1, "tu": 0.35, "de": 0.30, "cr": 0.72},
@@ -106,8 +139,8 @@ DEMO_RIDERS = [
         "phone": "+919000000004",
         "platform": "Swiggy",
         "city": "Chennai",
-        "zone": "T Nagar",
-        "upi": "deepa.krishnan@upi",
+        "zone": "Anna Nagar",       # lower risk zone in Chennai — 1.10×
+        "upi": "deepa.krishnan@ybl",
         "shift": {"start": "11:00", "end": "23:00"},
         "history": [
             {"offset": 1, "tu": 0.78, "de": 0.74, "cr": 0.80},
@@ -121,8 +154,8 @@ DEMO_RIDERS = [
         "phone": "+919000000005",
         "platform": "Zomato",
         "city": "Hyderabad",
-        "zone": "Hyderabad Central",
-        "upi": "suresh.babu@upi",
+        "zone": "Banjara Hills",    # mid risk zone in Hyderabad — 1.15×
+        "upi": "suresh.babu@paytm",
         "shift": {"start": "09:00", "end": "21:00"},
         "history": [
             {"offset": 1, "tu": 0.50, "de": 0.45, "cr": 0.62},
@@ -138,6 +171,7 @@ def run(db: Session) -> None:
     _seed_cities(db)
     _seed_zones(db)
     _seed_demo_riders(db)
+    # _seed_mass_scale(db)  # moved to dynamic admin endpoint
 
 
 def _seed_cities(db: Session) -> None:
@@ -244,3 +278,104 @@ def _seed_demo_riders(db: Session) -> None:
             )
 
         db.commit()
+
+
+def _seed_mass_scale(db: Session, target_users: int = 8000) -> None:
+    """
+    Generates thousands of shadow riders across all zones for admin map clustering.
+    Idempotent — skips if riders already exist beyond the 5 demo riders.
+    """
+    import uuid
+    import logging
+    logger = logging.getLogger(__name__)
+
+    total_existing = db.query(models.RiderProfile).count()
+    if total_existing > 100:
+        logger.info(f"Mass scale already present ({total_existing} riders). Skipping.")
+        return
+
+    logger.info(f"Generating {target_users} shadow riders for admin map...")
+    zones = db.query(models.GeoZone).all()
+    if not zones:
+        return
+
+    mock_hash = _hash("mock")
+    platforms = ["Swiggy", "Zomato", "Zepto", "Blinkit"]
+    now = datetime.now(timezone.utc)
+
+    new_riders = []
+    new_zones = []
+    new_policies = []
+    new_activity = []
+
+    for i in range(target_users):
+        zone = random.choice(zones)
+        tu = random.uniform(0.4, 0.98)
+        de = random.uniform(0.4, 0.98)
+        cr = random.uniform(0.5, 0.99)
+        r_score = min(((tu * de * cr) ** 0.5), 1.0)
+
+        pr_id = str(uuid.uuid4())
+
+        rider = models.RiderProfile(
+            profile_id=pr_id,
+            full_name=f"Shadow Rider {i}",
+            phone_number=f"+9180{str(i).zfill(8)}",
+            hashed_password=mock_hash,
+            platform=random.choice(platforms),
+            city_id=zone.city_id,
+            shift_hours={"start": "06:00", "end": "23:00"},
+            upi_id=f"shadow{i}@axis",
+            reliability_score=round(r_score, 2),
+            is_verified=True,
+            total_payouts_received=0.0,
+            total_premium_paid=0.0,
+            created_at=now,
+        )
+        new_riders.append(rider)
+
+        rz = models.RiderZone(
+            profile_id=pr_id, zone_id=zone.zone_id, is_primary=True
+        )
+        new_zones.append(rz)
+
+        pol = models.Policy(
+            profile_id=pr_id,
+            premium_amount=random.uniform(10.0, 45.0),
+            coverage_ratio=round(0.40 + 0.25 * r_score, 2),
+            r_factor_at_purchase=r_score,
+            status="ACTIVE",
+            purchased_at=now - timedelta(hours=random.randint(24, 72)),
+            activated_at=now - timedelta(hours=random.randint(1, 24)),
+            expires_at=now + timedelta(days=7),
+            is_surcharge_applied=False,
+        )
+        new_policies.append(pol)
+
+        # Generate starting baseline telemetry so fraud detection works
+        for j in range(random.randint(2, 5)):
+            new_activity.append(models.RiderActivityLog(
+                profile_id=pr_id,
+                activity_type="delivery",
+                zone_id=zone.zone_id,
+                recorded_at=now - timedelta(minutes=random.randint(5, 120)),
+            ))
+
+    logger.info("Bulk inserting riders...")
+    db.add_all(new_riders)
+    db.commit()
+
+    logger.info("Bulk inserting zone mappings...")
+    db.add_all(new_zones)
+    db.commit()
+
+    logger.info("Bulk inserting policies...")
+    db.add_all(new_policies)
+    db.commit()
+
+    logger.info("Bulk inserting activity logs...")
+    db.add_all(new_activity)
+    db.commit()
+
+    logger.info(f"Mass Scale Complete: {len(new_riders)} riders, {len(new_policies)} policies, {len(new_activity)} activity logs.")
+

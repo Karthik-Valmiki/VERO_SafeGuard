@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useRef } from "react"
 
 const AuthContext = createContext(null)
 const SimContext  = createContext(null)
+const AdminContext = createContext(null)
 
 // ── Simulator global state — persists across page navigation ─────────────────
 export function SimProvider({ children }) {
@@ -95,3 +96,33 @@ export function AuthProvider({ children }) {
 }
 
 export const useAuth = () => useContext(AuthContext)
+
+// ── Admin Auth ────────────────────────────────────────────────────────────────
+const ADMIN_USER = "name@admin"
+const ADMIN_PASS = "admin1234"
+
+export function AdminProvider({ children }) {
+  const [isAdmin, setIsAdmin] = useState(() => localStorage.getItem("vero_admin") === "1")
+
+  const adminLogin = (username, password) => {
+    if (username === ADMIN_USER && password === ADMIN_PASS) {
+      localStorage.setItem("vero_admin", "1")
+      setIsAdmin(true)
+      return true
+    }
+    return false
+  }
+
+  const adminLogout = () => {
+    localStorage.removeItem("vero_admin")
+    setIsAdmin(false)
+  }
+
+  return (
+    <AdminContext.Provider value={{ isAdmin, adminLogin, adminLogout }}>
+      {children}
+    </AdminContext.Provider>
+  )
+}
+
+export const useAdmin = () => useContext(AdminContext)

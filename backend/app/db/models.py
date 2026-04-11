@@ -109,3 +109,17 @@ class RiderActivityLog(Base):
     activity_type = Column(String(20))
     zone_id = Column(Integer, ForeignKey('geo_zones.zone_id'))
     recorded_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class FraudCheckLog(Base):
+    """Stores every fraud check with full ML feature breakdown for admin visibility."""
+    __tablename__ = "fraud_check_logs"
+    check_id = Column(BigInteger, primary_key=True, autoincrement=True)
+    profile_id = Column(UUID(as_uuid=True), ForeignKey('rider_profiles.profile_id'))
+    event_id = Column(UUID(as_uuid=True), ForeignKey('trigger_events.event_id'), nullable=True)
+    policy_id = Column(UUID(as_uuid=True), ForeignKey('policies.policy_id'), nullable=True)
+    result = Column(String(10))  # PASS or BLOCK
+    anomaly_score = Column(Numeric(5, 3))
+    features = Column(JSONB)  # full feature breakdown dict
+    reason = Column(String(200), nullable=True)
+    checked_at = Column(DateTime(timezone=True), server_default=func.now())
