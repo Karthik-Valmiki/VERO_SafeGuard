@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { useNavigate, Link } from "react-router-dom"
 import { useAuth } from "../context/AuthContext"
-import { sendOtp, verifyOtp, register } from "../api"
+import { sendOtp, verifyOtp, register, getZonesByCity } from "../api"
 import { ArrowLeft, Phone, ShieldCheck, User, CheckCircle } from "lucide-react"
 
 const CITIES    = ["Bengaluru","Chennai","Mumbai","Delhi","Gurgaon","Hyderabad","Vizag","Pune","Kolkata","Ahmedabad"]
@@ -39,8 +39,20 @@ export default function Register() {
   const [otp, setOtp]     = useState("")
   const [form, setForm]   = useState({
     name: "", password: "", platform: "Zomato",
-    city: "Mumbai", shift_start: "09:00", shift_end: "21:00", upi_id: "",
+    city: "Mumbai", zone_id: "", shift_start: "09:00", shift_end: "21:00", upi_id: "",
   })
+  const [zones, setZones] = useState([])
+  const [zonesLoading, setZonesLoading] = useState(false)
+
+  const fetchZones = async (city) => {
+    setZonesLoading(true)
+    try {
+      const res = await getZonesByCity(city)
+      setZones(res.data.zones || [])
+      setForm(f => ({ ...f, zone_id: "" }))
+    } catch { setZones([]) }
+    setZonesLoading(false)
+  }
 
   const err = (msg) => { setError(msg); setLoading(false) }
 
@@ -73,10 +85,11 @@ export default function Register() {
 
   const handleRegister = async () => {
     if (!form.name || !form.password || !form.upi_id) return err("Fill all fields")
+    if (!form.zone_id) return err("Please select your zone")
     if (form.password.length < 8) return err("Password must be at least 8 characters")
     setLoading(true); setError("")
     try {
-      const res = await register({ ...form, phone_number: phone, otp_code: otp })
+      const res = await register({ ...form, zone_id: parseInt(form.zone_id), phone_number: phone, otp_code: otp })
       saveRider(res.data); navigate("/dashboard")
     } catch (e) { err(e.response?.data?.detail || "Registration failed") }
     setLoading(false)
@@ -204,10 +217,31 @@ export default function Register() {
                 <div>
                   <label className="text-[10px] text-gray-500 mb-1 block uppercase tracking-widest">City</label>
                   <select className="input-field" value={form.city}
-                    onChange={e => setForm({ ...form, city: e.target.value })}>
+                    onChange={e => {
+                      setForm({ ...form, city: e.target.value, zone_id: "" })
+                      fetchZones(e.target.value)
+                    }}>
                     {CITIES.map(c => <option key={c}>{c}</option>)}
                   </select>
                 </div>
+              </div>
+              <div>
+                <label className="text-[10px] text-gray-500 mb-1 block uppercase tracking-widest">Zone</label>
+                {zones.length === 0 && !zonesLoading ? (
+                  <button type="button" className="input-field text-left text-gray-500 text-xs" onClick={() => fetchZones(form.city)}>
+                    Tap to load zones for {form.city}
+                  </button>
+                ) : zonesLoading ? (
+                  <div className="input-field text-gray-500 text-xs">Loading zones...</div>
+                ) : (
+                  <select className="input-field" value={form.zone_id}
+                    onChange={e => setForm({ ...form, zone_id: e.target.value })}>
+                    <option value="">Select your zone</option>
+                    {zones.map(z => (
+                      <option key={z.zone_id} value={z.zone_id}>{z.zone_name} (Risk: {z.risk}x)</option>
+                    ))}
+                  </select>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

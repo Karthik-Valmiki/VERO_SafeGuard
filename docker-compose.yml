@@ -1,4 +1,21 @@
-version: "3.9"
+# ─────────────────────────────────────────────────────────────────────────────
+# VERO SafeGuard — Docker Compose
+#
+# Run everything with one command (no .env file needed):
+#   docker compose up --build
+#
+# The app opens at http://localhost
+# Backend API docs at http://localhost:8000/docs
+#
+# Razorpay test keys are hardcoded below as defaults so the payment flow works
+# out of the box without any setup. To use your own keys, set environment
+# variables before running:
+#   set RAZORPAY_KEY_ID=rzp_test_xxxx
+#   set RAZORPAY_KEY_SECRET=xxxx
+#   docker compose up --build
+#
+# You do NOT need to edit this file for normal use.
+# ─────────────────────────────────────────────────────────────────────────────
 
 services:
 
@@ -23,22 +40,54 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:vero_secure_2026@db:5432/vero}
+      # Razorpay test keys — hardcoded so docker compose up --build works immediately.
+      # Replace with your own keys via env vars if needed (see header comment above).
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-rzp_test_Sb3L7VNU1p6fVQ}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-aZ3evTMqeU5EEcik9xZuEOPW}
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+      start_period: 60s
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
   frontend:
     build:
       context: ./frontend
-      target: prod
     ports:
       - "80:80"
     restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  admin-dashboard:
+    build:
+      context: ./admin-dashboard
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 volumes:
   pgdata:

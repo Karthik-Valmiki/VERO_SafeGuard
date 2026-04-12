@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "../context/AuthContext"
-import { getMyDashboard, getQuote } from "../api"
+import { getMyDashboard, getQuote, logActivity } from "../api"
 import {
   Shield, TrendingUp, CloudRain, Wifi, AlertTriangle,
-  ArrowRight, RefreshCw, LogOut, MapPin, Clock, ChevronRight, Zap
+  ArrowRight, RefreshCw, LogOut, MapPin, Clock, ChevronRight, Zap, BarChart2
 } from "lucide-react"
 import SimulatorBanner from "../components/SimulatorBanner"
 
@@ -106,9 +106,13 @@ function UpsellBanner({ quote, onActivate }) {
 }
 
 function ActivePolicyCard({ policy, onViewPolicy }) {
-  const used = Number(policy.total_paid_out || 0)
-  const cap  = Number(policy.weekly_cap || 1)
-  const pct  = Math.min(100, (used / cap) * 100)
+  // Backend now returns all fields directly
+  const premiumAmt  = Number(policy.premium || 0)
+  const coveragePct = Number(policy.coverage_pct ?? Math.round((policy.coverage_ratio || 0) * 100))
+  const weeklyCapAmt= Number(policy.weekly_cap || premiumAmt * 10)
+  const usedAmt     = Number(policy.total_paid_out || 0)
+  const remaining   = Number(policy.remaining_cap ?? Math.max(0, weeklyCapAmt - usedAmt))
+  const pct         = weeklyCapAmt > 0 ? Math.min(100, (usedAmt / weeklyCapAmt) * 100) : 0
   return (
     <div className="card !p-4 border-brand-500/20 bg-gradient-to-br from-brand-500/5 to-dark-800">
       <div className="flex items-center justify-between mb-3">
@@ -123,23 +127,23 @@ function ActivePolicyCard({ policy, onViewPolicy }) {
       <div className="grid grid-cols-3 gap-3 mb-3">
         <div>
           <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-0.5">Coverage</p>
-          <p className="text-lg font-display font-bold text-white">{Number(policy.coverage_pct || 0).toFixed(0)}%</p>
+          <p className="text-lg font-display font-bold text-white">{coveragePct}%</p>
         </div>
         <div>
           <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-0.5">Premium</p>
-          <p className="text-lg font-display font-bold text-white">₹{policy.premium_paid}</p>
+          <p className="text-lg font-display font-bold text-white">₹{premiumAmt.toFixed(0)}</p>
         </div>
         <div>
           <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-0.5">Cap left</p>
-          <p className="text-lg font-display font-bold text-brand-400">₹{Number(policy.remaining_cap || 0).toFixed(0)}</p>
+          <p className="text-lg font-display font-bold text-brand-400">₹{remaining.toFixed(0)}</p>
         </div>
       </div>
       <div className="h-1.5 bg-dark-700 rounded-full overflow-hidden">
         <div className="h-full bg-brand-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
       </div>
       <div className="flex justify-between text-[10px] text-gray-600 mt-1">
-        <span>Used ₹{used.toFixed(0)}</span>
-        <span>Cap ₹{cap.toFixed(0)}</span>
+        <span>Used ₹{usedAmt.toFixed(0)}</span>
+        <span>Cap ₹{weeklyCapAmt.toFixed(0)}</span>
       </div>
     </div>
   )
@@ -151,6 +155,20 @@ export default function Dashboard() {
   const [dash, setDash]       = useState(null)
   const [quote, setQuote]     = useState(null)
   const [loading, setLoading] = useState(true)
+  const [pinging, setPinging] = useState(false)
+
+  const handlePing = async () => {
+    if (!quote?.zone_id) return
+    setPinging(true)
+    try {
+      await logActivity(quote.zone_id)
+      alert("Location pinged! Your telemetry is successfully synced to " + quote.city + ".")
+    } catch(e) {
+      alert("Failed to ping location.")
+    } finally {
+      setPinging(false)
+    }
+  }
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
@@ -183,9 +201,6 @@ export default function Dashboard() {
           <Shield size={18} className="text-brand-500" /> VERO
         </span>
         <div className="flex items-center gap-2">
-          <button onClick={() => navigate("/simulator")} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-yellow-500/10 border border-yellow-500/25 text-yellow-400 rounded-lg text-[11px] font-bold hover:bg-yellow-500/20 transition-all">
-            <Zap size={12} /> Simulate
-          </button>
           <button onClick={() => load(true)} className="text-gray-600 hover:text-white transition-colors p-1.5">
             <RefreshCw size={14} />
           </button>
@@ -230,7 +245,7 @@ export default function Dashboard() {
                 {[
                   { label: "Tenure",  value: `${riderD?.r_breakdown?.weeks_tracked || 0}w`, sub: "weeks active" },
                   { label: "R-Score", value: riderD?.is_new_user ? "—" : Number(riderD?.reliability_score || 0).toFixed(2), sub: "reliability" },
-                  { label: "Shift",   value: rider?.shift_start?.slice(0,5) || "—", sub: "shift start" },
+                  { label: "Shift",   value: riderD?.shift_hours?.start || rider?.shift_start?.slice(0,5) || "—", sub: "shift start" },
                 ].map(({ label, value, sub }) => (
                   <div key={label} className="bg-dark-800/60 border border-dark-700/50 rounded-xl p-3 text-center">
                     <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">{label}</p>
@@ -251,11 +266,26 @@ export default function Dashboard() {
               )}
 
               {hasPol
-                ? <ActivePolicyCard policy={policy} onViewPolicy={() => navigate("/policy")} />
+                ? <ActivePolicyCard policy={policy} riderD={riderD} onViewPolicy={() => navigate("/policy")} />
                 : <UpsellBanner quote={quote} onActivate={() => navigate("/payment")} />
               }
 
               <RiskForecastCard quote={quote} />
+
+              {/* Start Telemetry Ping */}
+              <div className="bg-dark-800/40 border border-dark-700/40 rounded-2xl p-4 mb-4">
+                <p className="text-xs font-semibold mb-1 text-white flex items-center gap-2">
+                  <MapPin size={14} className="text-brand-400" /> Active Tracking
+                </p>
+                <p className="text-[10px] text-gray-500 mb-3">Sync your live delivery location to validate payouts.</p>
+                <button 
+                  onClick={handlePing}
+                  disabled={pinging}
+                  className="w-full flex items-center justify-center gap-2 py-2 bg-dark-700 hover:bg-dark-600 disabled:bg-dark-800 text-white font-bold rounded-xl text-xs transition-all"
+                >
+                  {pinging ? "Pinging..." : "Ping Current Location"}
+                </button>
+              </div>
 
               <div>
                 <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-2 px-1">Quick actions</p>

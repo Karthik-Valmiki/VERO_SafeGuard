@@ -97,11 +97,21 @@ def compute_r_breakdown(profile_id, db: Session) -> dict:
     }
 
 
-def compute_coverage_and_premium(city, zone, r: float, is_new: bool):
+def get_rider_metrics(profile_id, db: Session):
+    h = (
+        db.query(models.RiderPerformanceHistory)
+        .filter(models.RiderPerformanceHistory.profile_id == profile_id)
+        .order_by(models.RiderPerformanceHistory.week_start_date.desc())
+        .first()
+    )
+    if not h:
+        return 0.65, 0.60, 0.85 # internet averages
+    return float(h.time_utilization or 0.0), float(h.delivery_efficiency or 0.0), float(h.completion_rate or 0.0)
+
+def compute_coverage_and_premium(city, zone, profile_id, is_new: bool, db: Session):
     """
-    New user  : coverage = 40%,  premium = base_rate × risk_multi
-    Returning : coverage = 40% + 25%×R  (max 65%)
-                premium  = base_rate × risk_multi × (1.5 − R)
+    ML-Driven Coverage and Premium Engine.
+    Uses XGBoost and Random Forest.
     """
     base_rate = float(city.baseline_weekly_income) * 0.02
     risk_multi = (
@@ -110,12 +120,24 @@ def compute_coverage_and_premium(city, zone, r: float, is_new: bool):
         else float(city.default_risk_multiplier)
     )
 
+    from ..ml_engine import predict_premium_multiplier
+    
     if is_new:
         coverage = 0.40
         premium = round(base_rate * risk_multi, 2)
-    else:
-        coverage = round(min(0.40 + 0.25 * r, 0.65), 4)
-        premium = round(base_rate * risk_multi * (1.5 - r), 2)
+        weekly_cap = round(float(city.baseline_weekly_income) * coverage, 2)
+        return coverage, premium, weekly_cap
+
+    tu, de, cr = get_rider_metrics(profile_id, db)
+    
+    # ML Models output variables that feed the formula
+    predicted_r, predicted_risk_mult = predict_premium_multiplier(
+        zone_base_risk=risk_multi, tu=tu, de=de, cr=cr
+    )
+
+    coverage = round(min(0.40 + 0.25 * predicted_r, 0.65), 4)
+    # The Final Deterministic Pricing Formula powered by ML output
+    premium = round(base_rate * predicted_risk_mult, 2)
 
     weekly_cap = round(float(city.baseline_weekly_income) * coverage, 2)
     return coverage, premium, weekly_cap
@@ -152,6 +174,35 @@ def _is_new_user(profile_id, db: Session) -> bool:
         .filter(models.RiderPerformanceHistory.profile_id == profile_id)
         .count()
     ) < 2
+
+
+# ── Zones endpoint (public, for registration dropdown) ────────────────────────
+
+
+@router.get("/zones")
+def get_zones_for_city(city: str, db: Session = Depends(get_db)):
+    """Returns all zones for a given city name. Used in registration dropdown."""
+    city_obj = db.query(models.CityBenchmark).filter(
+        models.CityBenchmark.city_name == city.strip().title()
+    ).first()
+    if not city_obj:
+        return {"zones": []}
+    zones = (
+        db.query(models.GeoZone)
+        .filter(models.GeoZone.city_id == city_obj.city_id)
+        .order_by(models.GeoZone.zone_name)
+        .all()
+    )
+    return {
+        "zones": [
+            {
+                "zone_id": z.zone_id,
+                "zone_name": z.zone_name,
+                "risk": float(z.base_risk_multiplier),
+            }
+            for z in zones
+        ]
+    }
 
 
 # ── OTP endpoints ─────────────────────────────────────────────────────────────
@@ -260,18 +311,38 @@ def register(data: RiderCreate, db: Session = Depends(get_db)):
     if not city:
         raise HTTPException(status_code=400, detail=f"City '{data.city}' not supported")
 
-    # Assign zone — use existing zone for city or create default
-    zone = (
-        db.query(models.GeoZone).filter(models.GeoZone.city_id == city.city_id).first()
-    )
-    if not zone:
-        zone = models.GeoZone(
-            city_id=city.city_id,
-            zone_name=f"{city.city_name} Central",
-            base_risk_multiplier=city.default_risk_multiplier,
+    # Assign zone — use user-selected zone_id if provided, otherwise pick median-risk
+    if data.zone_id:
+        zone = (
+            db.query(models.GeoZone)
+            .filter(
+                models.GeoZone.zone_id == data.zone_id,
+                models.GeoZone.city_id == city.city_id,
+            )
+            .first()
         )
-        db.add(zone)
-        db.flush()
+        if not zone:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Zone {data.zone_id} does not belong to city '{data.city}'"
+            )
+    else:
+        city_zones = (
+            db.query(models.GeoZone)
+            .filter(models.GeoZone.city_id == city.city_id)
+            .order_by(models.GeoZone.base_risk_multiplier)
+            .all()
+        )
+        if not city_zones:
+            zone = models.GeoZone(
+                city_id=city.city_id,
+                zone_name=f"{city.city_name} Central",
+                base_risk_multiplier=city.default_risk_multiplier,
+            )
+            db.add(zone)
+            db.flush()
+        else:
+            zone = city_zones[len(city_zones) // 2]
 
     rider = models.RiderProfile(
         full_name=data.name,
@@ -292,12 +363,21 @@ def register(data: RiderCreate, db: Session = Depends(get_db)):
             profile_id=rider.profile_id, zone_id=zone.zone_id, is_primary=True
         )
     )
+
+    # Seed initial activity log so payout engine doesn't block as "no activity"
+    db.add(
+        models.RiderActivityLog(
+            profile_id=rider.profile_id,
+            activity_type="REGISTRATION_CHECKIN",
+            zone_id=zone.zone_id,
+        )
+    )
     db.commit()
     db.refresh(rider)
 
     # Compute premium quote (no policy created yet)
     coverage, premium, weekly_cap = compute_coverage_and_premium(
-        city, zone, 0.0, is_new=True
+        city, zone, rider.profile_id, is_new=True, db=db
     )
 
     return TokenResponse(
@@ -341,7 +421,7 @@ def login(data: RiderLogin, db: Session = Depends(get_db)):
 
     is_new = _is_new_user(rider.profile_id, db)
     r = compute_r(rider.profile_id, db) if not is_new else 0.0
-    coverage, premium, weekly_cap = compute_coverage_and_premium(city, zone, r, is_new)
+    coverage, premium, weekly_cap = compute_coverage_and_premium(city, zone, rider.profile_id, is_new, db)
 
     policy = (
         db.query(models.Policy)

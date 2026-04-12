@@ -1,11 +1,13 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import logging
+import time
+import random
 from sqlalchemy.orm import Session
 from fastapi import BackgroundTasks
 from ..db import models
+from ..db.database import SessionLocal
 from ..schemas.trigger import TriggerCreate, TriggerResponse
 from ..services import payout_engine, mock_api
-from ..db.database import SessionLocal
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +96,11 @@ def _fetch_and_validate(data: TriggerCreate) -> tuple[bool, str, dict]:
         api_data = mock_api.fetch_platform_status(platform)
 
         # Peak hour check
-        in_peak = any(s <= data.trigger_time <= e for s, e in PEAK_WINDOWS)
+        trigger_mins = _hhmm_to_minutes(data.trigger_time)
+        in_peak = any(
+            _hhmm_to_minutes(s) <= trigger_mins <= _hhmm_to_minutes(e)
+            for s, e in PEAK_WINDOWS
+        )
         if not in_peak:
             return (
                 False,
@@ -151,7 +157,6 @@ def _promote_pending_policies(db: Session, now: datetime):
     if promoted:
         db.commit()
 
-
 def activate_trigger(
     data: TriggerCreate, db: Session, background_tasks: BackgroundTasks
 ) -> TriggerResponse:
@@ -169,7 +174,7 @@ def activate_trigger(
     passed, threshold_msg, api_data = _fetch_and_validate(data)
     if not passed:
         raise ValueError(f"Trigger rejected: {threshold_msg}")
-
+        
     now = datetime.now(timezone.utc)
     _promote_pending_policies(db, now)
 
@@ -252,10 +257,11 @@ def activate_trigger(
         f"overlap={max_overlap}h | {interval_count} intervals | {eligible} eligible"
     )
 
-    bg_db = SessionLocal()
+    # Pass only serializable data to the background task.
+    # The task creates its OWN session to avoid stale object errors from
+    # SQLAlchemy expiring objects after commit in a different thread.
     background_tasks.add_task(
-        payout_engine.process_payouts_for_event,
-        bg_db,
+        payout_engine.run_payouts_in_background,
         event.event_id,
         zone.zone_id,
         data.trigger_time,

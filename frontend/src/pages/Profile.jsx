@@ -69,16 +69,19 @@ export default function Profile() {
   const tier    = getTier(r, isNew)
   const TierIcon = tier.icon
 
-  const totalReceived = payouts.reduce((s, p) => s + parseFloat(p.amount || 0), 0)
-  const premiumPaid   = hasPol ? Number(policy.premium_paid || 0) * Math.max(1, weeks) : 0
+  const totalReceived = payouts.filter(p => p.status === "SUCCESS").reduce((s, p) => s + parseFloat(p.amount || 0), 0)
+  // Backend returns policy.premium (not premium_paid)
+  const premiumWkly   = hasPol ? Number(policy.premium || 0) : 0
+  const premiumPaid   = premiumWkly * Math.max(1, weeks)
   const roi           = premiumPaid > 0 ? ((totalReceived / premiumPaid) * 100).toFixed(0) : null
 
-  const phoneDisplay = rider.phone_number || rider.phone || rider.phone_no || riderD?.phone_number || "—"
-  const upiDisplay   = rider.upi_id || riderD?.upi_id || "Not linked"
-  const shiftStart   = rider.shift_start?.slice(0,5) || riderD?.shift_start?.slice(0,5) || "—"
-  const shiftEnd     = rider.shift_end?.slice(0,5)   || riderD?.shift_end?.slice(0,5)   || "—"
-  const cityDisplay  = rider.city     || riderD?.city     || "—"
-  const platDisplay  = rider.platform || riderD?.platform || "—"
+  const phoneDisplay = rider.phone_number || rider.phone || riderD?.phone || "—"
+  const upiDisplay   = riderD?.upi_id || rider.upi_id || "Not linked"
+  const shiftHours   = riderD?.shift_hours || {}
+  const shiftStart   = shiftHours.start || rider.shift_start?.slice(0,5) || "—"
+  const shiftEnd     = shiftHours.end   || rider.shift_end?.slice(0,5)   || "—"
+  const cityDisplay  = riderD?.city     || rider.city     || "—"
+  const platDisplay  = riderD?.platform || rider.platform || "—"
 
   const menuSections = [
     {
@@ -93,7 +96,7 @@ export default function Profile() {
     {
       title: "Coverage",
       items: [
-        { icon: Shield,     label: "My Policy",        value: hasPol ? `Active · ₹${policy.premium_paid}/wk` : "No active policy", color: "text-brand-400", action: () => navigate("/policy") },
+        { icon: Shield,     label: "My Policy",        value: hasPol ? `Active · ₹${Number(policy.premium || 0).toFixed(0)}/wk` : "No active policy", color: "text-brand-400", action: () => navigate("/policy") },
         { icon: TrendingUp, label: "Claims & Payouts", value: `₹${totalReceived.toFixed(0)} received`,                             color: "text-green-400", action: () => navigate("/claims") },
       ],
     },

@@ -23,6 +23,7 @@ class RiderCreate(BaseModel):
     password: str = Field(..., min_length=8)
     platform: str
     city: str
+    zone_id: int | None = None
     shift_start: str = Field(..., example="09:00")
     shift_end: str = Field(..., example="21:00")
     upi_id: str = Field(..., example="9876543210@upi")

@@ -166,7 +166,7 @@ class NotificationService:
                 )
 
         # Sort by creation time, newest first
-        notifications.sort(key=lambda x: x["created_at"], reverse=True)
+        notifications.sort(key=lambda x: x["created_at"] or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
         return notifications
 
     @staticmethod

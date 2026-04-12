@@ -64,7 +64,7 @@ export default function Policy() {
   const riderD = dash?.rider
   const hasPol = policy?.status === "ACTIVE" || policy?.status === "PENDING"
   const used   = Number(policy?.total_paid_out || 0)
-  const cap    = Number(policy?.weekly_cap || 1)
+  const cap    = Number(policy?.weekly_cap || parseFloat(policy?.premium || 0) * 10 || 1)
   const capPct = Math.min(100, (used / cap) * 100)
 
   return (
@@ -106,11 +106,11 @@ export default function Policy() {
                     </div>
                     <div className="bg-dark-900/60 rounded-xl p-3 text-center">
                       <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">Premium</p>
-                      <p className="text-xl font-display font-bold text-brand-400">₹{policy.premium_paid}</p>
+                      <p className="text-xl font-display font-bold text-brand-400">₹{Number(policy.premium || 0).toFixed(0)}</p>
                     </div>
                     <div className="bg-dark-900/60 rounded-xl p-3 text-center">
                       <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">Weekly cap</p>
-                      <p className="text-xl font-display font-bold text-white">₹{policy.weekly_cap}</p>
+                      <p className="text-xl font-display font-bold text-white">₹{Number(policy.weekly_cap || 0).toFixed(0)}</p>
                     </div>
                   </div>
 
