@@ -82,10 +82,10 @@ const TRIGGER_OPTIONS = [
 ]
 
 const API_SOURCE = {
-  WEATHER:           "OpenWeatherMap + Tomorrow.io",
-  AQI:               "IQAir / CPCB",
-  PLATFORM_BLACKOUT: "DownDetector",
-  SOCIAL_DISRUPTION: "NewsAPI.org + Twitter/X",
+  WEATHER:           "Open-Meteo (Live Weather)",
+  AQI:               "Open-Meteo Air Quality (Live)",
+  PLATFORM_BLACKOUT: "DownDetector (Simulated)",
+  SOCIAL_DISRUPTION: "GDELT Project (Live News)",
 }
 
 function ActiveTriggerCard({ notification }) {
@@ -110,11 +110,11 @@ export default function Simulator() {
   const { rider, logout } = useAuth()
   const navigate = useNavigate()
 
-  const [dash, setDash]     = useState(null)
-  const [quote, setQuote]   = useState(null)
+  const [dash, setDash] = useState(null)
+  const [quote, setQuote] = useState(null)
   const [loading, setLoading] = useState(true)
   const [zoneId, setZoneId] = useState("")
-  const [queue, setQueue]   = useState([{ triggerIdx: 0, startTime: "19:00", endTime: "21:00", thresholdValue: 50 }])
+  const [queue, setQueue] = useState([{ triggerIdx: 0, startTime: "19:00", endTime: "21:00", thresholdValue: 50 }])
   const [firing, setFiring] = useState(false)
   const [results, setResults] = useState([])
   const [notifications, setNotifications] = useState([])
@@ -142,8 +142,8 @@ export default function Simulator() {
     }
   }, [logout, navigate, zoneId, loadNotifications])
 
-  useEffect(() => { 
-    load() 
+  useEffect(() => {
+    load()
     // Set up periodic refresh for notifications every 10 seconds
     const interval = setInterval(loadNotifications, 10000)
     return () => clearInterval(interval)
@@ -154,9 +154,9 @@ export default function Simulator() {
   const policy = dash?.policy
   const hasPol = policy?.status === "ACTIVE" || policy?.status === "PENDING"
 
-  const addToQueue    = () => { if (queue.length < 3) setQueue(q => [...q, { triggerIdx: 0, startTime: "19:00", endTime: "21:00", thresholdValue: 50 }]) }
+  const addToQueue = () => { if (queue.length < 3) setQueue(q => [...q, { triggerIdx: 0, startTime: "19:00", endTime: "21:00", thresholdValue: 50 }]) }
   const removeFromQueue = (i) => setQueue(q => q.filter((_, idx) => idx !== i))
-  const updateQueue   = (i, field, val) => setQueue(q => q.map((item, idx) => idx === i ? { ...item, [field]: val } : item))
+  const updateQueue = (i, field, val) => setQueue(q => q.map((item, idx) => idx === i ? { ...item, [field]: val } : item))
 
   const handleFireAll = async () => {
     if (!zoneId) return
@@ -166,18 +166,22 @@ export default function Simulator() {
     for (const item of queue) {
       const opt = TRIGGER_OPTIONS[item.triggerIdx]
       if (item.endTime <= item.startTime) continue
+      if (opt.label === "Extreme Heat" && (item.startTime < "10:45" || item.endTime > "17:15")) {
+        fired.push({ error: "Heat triggers only allowed between 10:45 AM and 5:15 PM", optMeta: opt })
+        continue
+      }
       try {
         await logActivity(parseInt(zoneId))
         const meta = { thresholdValue: item.thresholdValue }
-        if (opt.forceHail)  meta.hail = true
-        if (opt.forceHeat)  meta.heat = true
+        if (opt.forceHail) meta.hail = true
+        if (opt.forceHeat) meta.heat = true
         const res = await simulateTrigger({
-          zone_id:          parseInt(zoneId),
-          metric_type:      opt.val,
-          trigger_time:     item.startTime,
+          zone_id: parseInt(zoneId),
+          metric_type: opt.val,
+          trigger_time: item.startTime,
           trigger_end_time: item.endTime,
-          platform:         opt.platform || "zomato",
-          event_metadata:   meta,
+          platform: opt.platform || "zomato",
+          event_metadata: meta,
         })
         fired.push({ ...res.data, optMeta: opt })
       } catch (e) {
@@ -240,7 +244,7 @@ export default function Simulator() {
               {notifications.filter(n => n.type === "active").length > 0 && (
                 <div className="space-y-2">
                   <p className="text-[10px] text-gray-500 uppercase tracking-widest px-1">Live triggers</p>
-                  {notifications.filter(n => n.type === "active").map(notification => 
+                  {notifications.filter(n => n.type === "active").map(notification =>
                     <ActiveTriggerCard key={notification.id} notification={notification} />
                   )}
                 </div>
@@ -271,7 +275,7 @@ export default function Simulator() {
                 <input className="input-field" placeholder="Zone ID e.g. 1" value={zoneId}
                   onChange={e => setZoneId(e.target.value)} />
                 <p className="text-[10px] text-gray-600 mt-1 px-1">
-                  Your zone: {quote?.zone_id || "—"} · {quote?.city || "—"} · Shift: {rider.shift_start?.slice(0,5) || "—"}–{rider.shift_end?.slice(0,5) || "—"}
+                  Your zone: {quote?.zone_id || "—"} · {quote?.city || "—"} · Shift: {rider.shift_start?.slice(0, 5) || "—"}–{rider.shift_end?.slice(0, 5) || "—"}
                 </p>
               </div>
 
@@ -288,7 +292,7 @@ export default function Simulator() {
 
                 <div className="space-y-3">
                   {queue.map((item, i) => {
-                    const opt    = TRIGGER_OPTIONS[item.triggerIdx]
+                    const opt = TRIGGER_OPTIONS[item.triggerIdx]
                     const timeOk = item.endTime > item.startTime
                     return (
                       <div key={i} className={`${opt.bg} border ${opt.border} rounded-xl p-3 space-y-2.5`}>
@@ -314,8 +318,8 @@ export default function Simulator() {
                             {opt.inputType === 'boolean' ? 'Confirmed' : `${opt.inputType.charAt(0).toUpperCase() + opt.inputType.slice(1)} (${opt.unit})`}
                           </label>
                           {opt.inputType === 'boolean' ? (
-                            <select 
-                              className="input-field text-xs py-2" 
+                            <select
+                              className="input-field text-xs py-2"
                               value={item.thresholdValue >= 1 ? "1" : "0"}
                               onChange={e => updateQueue(i, "thresholdValue", parseInt(e.target.value))}
                             >
@@ -323,21 +327,20 @@ export default function Simulator() {
                               <option value="1">Yes</option>
                             </select>
                           ) : (
-                            <input 
-                              className="input-field text-xs py-2" 
-                              type="number" 
-                              min="0" 
+                            <input
+                              className="input-field text-xs py-2"
+                              type="number"
+                              min="0"
                               step={opt.inputType === 'temperature' ? "1" : opt.inputType === 'confidence' ? "1" : "0.1"}
                               value={item.thresholdValue}
                               onChange={e => updateQueue(i, "thresholdValue", parseFloat(e.target.value) || 0)}
                               placeholder={`Min: ${opt.minThreshold}`}
                             />
                           )}
-                          <p className={`text-[10px] mt-1 ${
-                            item.thresholdValue >= opt.minThreshold ? "text-green-400" : "text-red-400"
-                          }`}>
-                            {item.thresholdValue >= opt.minThreshold 
-                              ? `✓ Above threshold (≥${opt.minThreshold}${opt.unit})` 
+                          <p className={`text-[10px] mt-1 ${item.thresholdValue >= opt.minThreshold ? "text-green-400" : "text-red-400"
+                            }`}>
+                            {item.thresholdValue >= opt.minThreshold
+                              ? `✓ Above threshold (≥${opt.minThreshold}${opt.unit})`
                               : `✗ Below threshold (need ≥${opt.minThreshold}${opt.unit})`
                             }
                           </p>
@@ -356,7 +359,10 @@ export default function Simulator() {
                           </div>
                         </div>
                         {!timeOk && <p className="text-red-400 text-[10px]">End must be after start</p>}
-                        <p className="text-[10px] text-gray-600">📡 {API_SOURCE[opt.val]}</p>
+                        {opt.label === "Extreme Heat" && (item.startTime < "10:45" || item.endTime > "17:15") && (
+                          <p className="text-red-400 text-[10px]">Heat triggers only allowed 10:45 AM — 5:15 PM</p>
+                        )}
+                        <p className="text-[10px] text-gray-600">{API_SOURCE[opt.val]}</p>
                       </div>
                     )
                   })}
@@ -376,7 +382,13 @@ export default function Simulator() {
               {/* Fire button */}
               <button
                 onClick={handleFireAll}
-                disabled={firing || !zoneId || queue.some(q => q.endTime <= q.startTime || q.thresholdValue < TRIGGER_OPTIONS[q.triggerIdx].minThreshold)}
+                disabled={firing || !zoneId || queue.some(q => {
+                  const opt = TRIGGER_OPTIONS[q.triggerIdx];
+                  if (q.endTime <= q.startTime) return true;
+                  if (q.thresholdValue < opt.minThreshold) return true;
+                  if (opt.label === "Extreme Heat" && (q.startTime < "10:45" || q.endTime > "17:15")) return true;
+                  return false;
+                })}
                 className="w-full flex items-center justify-center gap-2 py-3.5 bg-yellow-500 hover:bg-yellow-400 disabled:bg-dark-700 disabled:text-gray-600 text-black font-bold rounded-xl text-sm transition-all active:scale-[0.98] shadow-[0_8px_24px_rgba(234,179,8,0.2)]"
               >
                 {firing
@@ -390,11 +402,10 @@ export default function Simulator() {
                 <div className="space-y-2">
                   <p className="text-[10px] text-gray-500 uppercase tracking-widest px-1">Results</p>
                   {results.map((r, i) => (
-                    <div key={i} className={`rounded-xl p-3 border text-xs ${
-                      r.error ? "bg-red-500/10 border-red-500/20 text-red-400"
+                    <div key={i} className={`rounded-xl p-3 border text-xs ${r.error ? "bg-red-500/10 border-red-500/20 text-red-400"
                         : r.isHighest ? "bg-brand-500/10 border-brand-500/20"
-                        : "bg-dark-800/60 border-dark-700/50"
-                    }`}>
+                          : "bg-dark-800/60 border-dark-700/50"
+                      }`}>
                       {r.error ? (
                         <p>{r.optMeta.label}: {r.error}</p>
                       ) : (
@@ -414,7 +425,7 @@ export default function Simulator() {
                           </div>
                           <div className="grid grid-cols-3 gap-1.5">
                             {[
-                              { label: "Overlap",   value: `${r.overlap_hours}h` },
+                              { label: "Overlap", value: `${r.overlap_hours}h` },
                               { label: "Intervals", value: `${r.interval_count}×` },
                               { label: "Est. payout", value: `₹${r.estimated_payout_returning}`, highlight: r.isHighest },
                             ].map(({ label, value, highlight }) => (

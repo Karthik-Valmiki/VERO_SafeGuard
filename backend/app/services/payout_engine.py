@@ -371,7 +371,29 @@ def _evaluate_rider(
         )
         .scalar() or 0
     )
-    claims_anomaly_ratio = (rider_payout_count / 2.0) if rider_payout_count > 0 else 1.0
+
+    # Zone-average payout count: how many payouts do riders in this zone typically receive?
+    # Compare this rider against zone peers to detect cherry-picking behaviour.
+    zone_avg_payout_count = (
+        db.query(sa_func.avg(
+            db.query(sa_func.count(models.Payout.payout_id))
+            .join(models.Policy, models.Payout.policy_id == models.Policy.policy_id)
+            .join(models.RiderZone, models.Policy.profile_id == models.RiderZone.profile_id)
+            .filter(
+                models.RiderZone.zone_id == zone_id,
+                models.Payout.status == "SUCCESS",
+            )
+            .correlate(None)
+            .scalar_subquery()
+        ))
+    ).scalar() or None
+
+    if zone_avg_payout_count and float(zone_avg_payout_count) > 0:
+        claims_anomaly_ratio = round(rider_payout_count / float(zone_avg_payout_count), 3)
+    elif rider_payout_count > 0:
+        claims_anomaly_ratio = float(rider_payout_count)  # no zone baseline yet — use raw count as signal
+    else:
+        claims_anomaly_ratio = 1.0  # new rider, no claims — neutral
 
     logger.info(
         f"[ML CHECK] Rider {rider.profile_id} ({rider.platform}) | "
