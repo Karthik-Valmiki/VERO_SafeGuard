@@ -8,6 +8,11 @@ RUN npm install
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
+
+# Force fresh build of source code
+ARG CACHE_BUSTER=unknown
+RUN echo "Cache buster: $CACHE_BUSTER"
+
 COPY . .
 ARG VITE_API_URL
 ARG VITE_ADMIN_USER

@@ -8,6 +8,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Force fresh copy of app code
+ARG CACHE_BUSTER=unknown
+RUN echo "Cache buster: $CACHE_BUSTER"
+
 COPY app/ ./app/
 
 EXPOSE 8000

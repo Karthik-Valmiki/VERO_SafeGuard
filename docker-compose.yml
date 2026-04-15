@@ -38,6 +38,8 @@ services:
   backend:
     build:
       context: ./backend
+      args:
+        CACHE_BUSTER: "172138"
     restart: unless-stopped
     environment:
       DATABASE_URL: ${DATABASE_URL}
@@ -68,6 +70,7 @@ services:
         VITE_ADMIN_USER: ${VITE_ADMIN_USER}
         VITE_ADMIN_PASS: ${VITE_ADMIN_PASS}
         VITE_ADMIN_API_KEY: ${VITE_ADMIN_API_KEY}
+        CACHE_BUSTER: "172138"
       cache_from: []
     ports:
       - "80:80"
@@ -91,6 +94,7 @@ services:
         VITE_ADMIN_USER: ${VITE_ADMIN_USER}
         VITE_ADMIN_PASS: ${VITE_ADMIN_PASS}
         VITE_ADMIN_API_KEY: ${VITE_ADMIN_API_KEY}
+        CACHE_BUSTER: "172138"
       cache_from: []
     ports:
       - "8080:80"
