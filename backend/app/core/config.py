@@ -12,9 +12,12 @@ DEMO_PAYOUT_INTERVAL_SECONDS = 10
 # Number of demo intervals per disruption hour (real = 2 per hour i.e. every 30min)
 DEMO_SECONDS_PER_REAL_MINUTE = 1
 
-# Razorpay — test keys (safe to commit for demo; replace with real keys in production)
+# Razorpay — loaded from env only (never hardcoded)
 RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "")
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "")
+
+# Admin API key — protects all /dashboards/admin/* endpoints
+ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "vero_admin_key_2026")
 
 
 class Settings(BaseSettings):

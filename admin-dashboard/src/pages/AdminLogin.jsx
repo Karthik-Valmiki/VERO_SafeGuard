@@ -46,7 +46,7 @@ export default function AdminLogin() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="input-field"
-                  placeholder="name@admin"
+                  placeholder="admin@vero"
                 />
               </div>
             </div>

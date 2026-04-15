@@ -59,33 +59,55 @@ function PayoutRow({ payout, isNew }) {
 }
 
 // ── Event group card (expandable) ─────────────────────────────────────────
-function EventGroup({ eventId, payouts, prevKnownIds, defaultExpanded = false }) {
-  const [expanded, setExpanded] = useState(defaultExpanded)
-  const meta    = getTriggerMeta(payouts[0]?.metric_type)
-  const Icon    = meta.icon
-  const total   = payouts.reduce((s, p) => s + p.amount, 0)
-  const realCt  = payouts.filter(p => p.rider_type === "real").length
-  const mockCt  = payouts.filter(p => p.rider_type === "mock").length
+// isLatest = true only for the newest trigger — it starts expanded.
+// All older triggers start collapsed so the feed stays readable.
+function EventGroup({ eventId, payouts, prevKnownIds, isLatest = false, meta = null }) {
+  const [expanded, setExpanded] = useState(isLatest)
+  const uiMeta   = getTriggerMeta(payouts[0]?.metric_type)
+  const Icon     = uiMeta.icon
+  const total    = meta ? meta.total_amount : payouts.reduce((s, p) => s + p.amount, 0)
   const zoneName = payouts[0]?.zone_name || "—"
-  const latestAt = payouts[0]?.processed_at
+  const latestAt = meta?.started_at || payouts[0]?.processed_at
 
-  // New payouts since last render
-  const newIds = new Set(payouts.filter(p => !prevKnownIds?.has(p.payout_id)).map(p => p.payout_id))
+  // Deduplicate riders by profile_id (falls back to rider_name).
+  // A real rider can legitimately receive multiple payouts in one trigger
+  // (shift overlap across intervals) — but we count them as ONE unique rider.
+  const seenRiders = new Map()
+  for (const p of payouts) {
+    const key = p.profile_id || p.rider_name
+    if (!seenRiders.has(key)) seenRiders.set(key, p)
+  }
+  const uniqueRiders = [...seenRiders.values()]
+  const realCt    = uniqueRiders.filter(p => p.rider_type === "real").length
+  const mockCt    = uniqueRiders.filter(p => p.rider_type === "mock").length
+  const totalRiders = uniqueRiders.length   // unique riders, not payout count
+
+  // Track which payout IDs are new since the last poll cycle
+  const newIds = new Set(
+    payouts.filter(p => !prevKnownIds?.has(p.payout_id)).map(p => p.payout_id)
+  )
 
   return (
-    <div className={`rounded-2xl border overflow-hidden transition-all duration-200 ${meta.border} ${meta.bg}`}>
-      {/* Header row */}
+    <div className={`rounded-2xl border overflow-hidden transition-all duration-200 ${uiMeta.border} ${uiMeta.bg}`}>
+
+      {/* ── Trigger header — click to expand/collapse payout list ── */}
       <button
         onClick={() => setExpanded(v => !v)}
         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/3 transition-colors"
       >
-        <div className={`w-9 h-9 rounded-xl ${meta.bg} border ${meta.border} flex items-center justify-center flex-shrink-0`}>
-          <Icon className={`w-4 h-4 ${meta.color}`} />
+        <div className={`w-9 h-9 rounded-xl ${uiMeta.bg} border ${uiMeta.border} flex items-center justify-center flex-shrink-0`}>
+          <Icon className={`w-4 h-4 ${uiMeta.color}`} />
         </div>
+
         <div className="flex-1 min-w-0 text-left">
           <div className="flex items-center gap-2">
-            <p className={`text-sm font-bold ${meta.color}`}>{meta.label}</p>
-            {newIds.size > 0 && (
+            <p className={`text-sm font-bold ${uiMeta.color}`}>{uiMeta.label}</p>
+            {isLatest && (
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                LATEST
+              </span>
+            )}
+            {newIds.size > 0 && !isLatest && (
               <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
                 +{newIds.size} NEW
               </span>
@@ -93,17 +115,25 @@ function EventGroup({ eventId, payouts, prevKnownIds, defaultExpanded = false })
           </div>
           <p className="text-[11px] text-gray-400 truncate">{zoneName} · {fmtDatetime(latestAt)}</p>
         </div>
+
+        {/* Payout summary — always visible even when collapsed */}
         <div className="text-right flex-shrink-0 mr-2">
           <p className="text-sm font-bold font-mono text-white">{fmtCur(total)}</p>
-          <p className="text-[10px] text-gray-500">{payouts.length} payouts</p>
+          <p className="text-[10px] text-gray-500">
+            {totalRiders} unique rider{totalRiders !== 1 ? "s" : ""}
+            {payouts.length > totalRiders && (
+              <span className="text-gray-600"> · {payouts.length} payouts</span>
+            )}
+          </p>
         </div>
+
         {expanded
-          ? <ChevronDown className="w-4 h-4 text-gray-500 flex-shrink-0" />
+          ? <ChevronDown  className="w-4 h-4 text-gray-500 flex-shrink-0" />
           : <ChevronRight className="w-4 h-4 text-gray-500 flex-shrink-0" />
         }
       </button>
 
-      {/* Meta pills */}
+      {/* ── Meta pills — always visible ── */}
       <div className="px-4 pb-3 flex items-center gap-2 flex-wrap">
         {realCt > 0 && (
           <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-300">
@@ -115,12 +145,17 @@ function EventGroup({ eventId, payouts, prevKnownIds, defaultExpanded = false })
             {mockCt} simulated
           </span>
         )}
+        {payouts.length > totalRiders && (
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300">
+            {payouts.length - totalRiders} repeat payouts
+          </span>
+        )}
         <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-gray-400">
           #{(eventId || "").slice(0, 8)}
         </span>
       </div>
 
-      {/* Expandable payout list */}
+      {/* ── Expandable payout history list ── */}
       {expanded && (
         <div className="px-3 pb-3 space-y-1.5 max-h-64 overflow-y-auto custom-scrollbar">
           {payouts.map(p => (
@@ -167,18 +202,24 @@ function UngroupedSection({ payouts, prevKnownIds }) {
 // ── Live Execution Feed ───────────────────────────────────────────────────
 function LiveExecutionFeed() {
   const [payouts,      setPayouts]     = useState([])
+  const [eventMeta,    setEventMeta]   = useState({})
   const [prevIds,      setPrevIds]     = useState(new Set())
   const [loading,      setLoading]     = useState(true)
   const [lastRefresh,  setLastRefresh] = useState(null)
   const [newCount,     setNewCount]    = useState(0)
+  const [systemPremium, setSystemPremium] = useState(0)
   const INTERVAL = 5000
 
   const fetchPayouts = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     try {
-      const res  = await fetch("/api/dashboards/admin/live-payouts?limit=150")
+      const res  = await fetch("/api/dashboards/admin/live-payouts?limit=150", {
+        headers: { "X-Admin-Key": import.meta.env.VITE_ADMIN_API_KEY || "vero_admin_key_2026" }
+      })
       const data = await res.json()
       const list = data.payouts || []
+      setEventMeta(data.event_meta || {})
+      setSystemPremium(data.system_premium || 0)
       setPayouts(prev => {
         const prevSet = new Set(prev.map(p => p.payout_id))
         const fresh   = list.filter(p => !prevSet.has(p.payout_id)).length
@@ -197,7 +238,7 @@ function LiveExecutionFeed() {
     return () => clearInterval(iv)
   }, [fetchPayouts])
 
-  // Group by event_id
+  // Group payouts by event_id, sort newest trigger first
   const groups = {}
   const ungrouped = []
   for (const p of payouts) {
@@ -208,13 +249,23 @@ function LiveExecutionFeed() {
       ungrouped.push(p)
     }
   }
+  // Sort by the trigger start time or payout processed time
   const groupEntries = Object.entries(groups).sort(
-    ([, a], [, b]) => new Date(b[0].processed_at) - new Date(a[0].processed_at)
+    ([eid_a, a], [eid_b, b]) => {
+      const timeA = eventMeta[eid_a]?.started_at ? new Date(eventMeta[eid_a].started_at).getTime() : new Date(a[0].processed_at).getTime()
+      const timeB = eventMeta[eid_b]?.started_at ? new Date(eventMeta[eid_b].started_at).getTime() : new Date(b[0].processed_at).getTime()
+      return timeB - timeA // Newest first
+    }
   )
 
-  const totalPaid  = payouts.reduce((s, p) => s + p.amount, 0)
-  const realCount  = payouts.filter(p => p.rider_type === "real").length
-  const mockCount  = payouts.filter(p => p.rider_type === "mock").length
+  const totalPaid = Object.values(eventMeta).reduce((s, m) => s + m.total_amount, 0) + ungrouped.reduce((s, p) => s + p.amount, 0)
+  const realCount = Object.values(eventMeta).reduce((s, m) => s + m.real_count, 0)   + ungrouped.filter(p => p.rider_type === "real").length
+  const mockCount = Object.values(eventMeta).reduce((s, m) => s + m.mock_count, 0)   + ungrouped.filter(p => p.rider_type === "mock").length
+
+  const totalSuccessCount = Object.values(eventMeta).reduce((s, m) => s + m.total_count, 0) + ungrouped.length
+  const totalFraudCount   = Object.values(eventMeta).reduce((s, m) => s + m.total_fraud, 0)
+  const totalAttempts     = totalSuccessCount + totalFraudCount
+  const resilience        = totalAttempts > 0 ? (totalSuccessCount / totalAttempts) * 100 : 100
 
   const dismissNew = () => setNewCount(0)
 
@@ -247,10 +298,10 @@ function LiveExecutionFeed() {
       {payouts.length > 0 && (
         <div className="grid grid-cols-4 gap-2 mb-4 flex-shrink-0">
           {[
-            { label: "Total Paid",    val: fmtCur(totalPaid),            color: "text-emerald-400" },
-            { label: "Events",        val: groupEntries.length,           color: "text-violet-400" },
-            { label: "Real Riders",   val: realCount,                     color: "text-violet-400" },
-            { label: "Simulated",     val: mockCount,                     color: "text-blue-400" },
+            { label: "System Resilience", val: `${resilience.toFixed(1)}%`,        color: "text-emerald-400" },
+            { label: "Events",            val: groupEntries.length,                color: "text-violet-400" },
+            { label: "Real Riders",       val: realCount,                          color: "text-violet-400" },
+            { label: "Simulated",         val: mockCount,                          color: "text-blue-400" },
           ].map(({ label, val, color }) => (
             <div key={label} className="bg-dark-900 border border-dark-600 rounded-xl px-3 py-2 text-center">
               <p className={`text-sm font-bold font-mono ${color}`}>{val}</p>
@@ -280,8 +331,9 @@ function LiveExecutionFeed() {
                 key={eid}
                 eventId={eid}
                 payouts={pouts}
+                meta={eventMeta[eid]}
                 prevKnownIds={prevIds}
-                defaultExpanded={idx === 0}
+                isLatest={idx === 0}
               />
             ))}
             <UngroupedSection payouts={ungrouped} prevKnownIds={prevIds} />
@@ -294,7 +346,7 @@ function LiveExecutionFeed() {
         <div className="mt-4 pt-4 border-t border-dark-600 flex-shrink-0 flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs text-gray-500">
             <IndianRupee className="w-3.5 h-3.5" />
-            Showing last 150 payouts across {groupEntries.length} event{groupEntries.length !== 1 ? "s" : ""}
+            Showing recent payouts across {groupEntries.length} active event{groupEntries.length !== 1 ? "s" : ""}
           </div>
           <p className="text-sm font-bold font-mono text-emerald-400">{fmtCur(totalPaid)}</p>
         </div>
@@ -312,7 +364,9 @@ export default function OverviewTab() {
 
   const fetchData = async () => {
     try {
-      const res    = await fetch("/api/dashboards/admin/summary")
+      const res    = await fetch("/api/dashboards/admin/summary", {
+        headers: { "X-Admin-Key": import.meta.env.VITE_ADMIN_API_KEY || "vero_admin_key_2026" }
+      })
       const sumData = await res.json()
       setData(sumData)
     } catch (err) {

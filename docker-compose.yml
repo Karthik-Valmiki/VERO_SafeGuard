@@ -1,17 +1,18 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # VERO SafeGuard — Docker Compose
 #
-# Run everything with one command (no .env file needed):
+# Run everything with one command:
 #   docker compose up --build
 #
 # The app opens at http://localhost
+# Admin dashboard at http://localhost:8080
 # Backend API docs at http://localhost:8000/docs
 #
-# Razorpay test keys are hardcoded below as defaults so the payment flow works
-# out of the box without any setup. To use your own keys, set environment
-# variables before running:
-#   set RAZORPAY_KEY_ID=rzp_test_xxxx
-#   set RAZORPAY_KEY_SECRET=xxxx
+# All secrets (DB password, Razorpay keys, admin API key) are loaded from
+# the .env file in this directory. Never commit secrets inline.
+#
+# To override any variable, set it in your shell before running:
+#   set RAZORPAY_KEY_ID=rzp_live_xxxx
 #   docker compose up --build
 #
 # You do NOT need to edit this file for normal use.
@@ -24,7 +25,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vero_secure_2026}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-vero}
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -37,13 +38,16 @@ services:
   backend:
     build:
       context: ./backend
+      args:
+        CACHE_BUSTER: "172138"
     restart: unless-stopped
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:vero_secure_2026@db:5432/vero}
-      # Razorpay test keys — hardcoded so docker compose up --build works immediately.
-      # Replace with your own keys via env vars if needed (see header comment above).
-      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-rzp_test_Sb3L7VNU1p6fVQ}
-      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-aZ3evTMqeU5EEcik9xZuEOPW}
+      DATABASE_URL: ${DATABASE_URL}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET}
+      ADMIN_API_KEY: ${ADMIN_API_KEY}
+    env_file:
+      - .env
     ports:
       - "8000:8000"
     depends_on:
@@ -60,6 +64,14 @@ services:
   frontend:
     build:
       context: ./frontend
+      target: prod
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+        VITE_ADMIN_USER: ${VITE_ADMIN_USER}
+        VITE_ADMIN_PASS: ${VITE_ADMIN_PASS}
+        VITE_ADMIN_API_KEY: ${VITE_ADMIN_API_KEY}
+        CACHE_BUSTER: "172138"
+      cache_from: []
     ports:
       - "80:80"
     restart: unless-stopped
@@ -76,6 +88,14 @@ services:
   admin-dashboard:
     build:
       context: ./admin-dashboard
+      target: prod
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+        VITE_ADMIN_USER: ${VITE_ADMIN_USER}
+        VITE_ADMIN_PASS: ${VITE_ADMIN_PASS}
+        VITE_ADMIN_API_KEY: ${VITE_ADMIN_API_KEY}
+        CACHE_BUSTER: "172138"
+      cache_from: []
     ports:
       - "8080:80"
     restart: unless-stopped
@@ -83,7 +103,7 @@ services:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost/ || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5

@@ -44,6 +44,7 @@ class RiderProfile(Base):
     reliability_score = Column(Numeric(3, 2), default=0.00)
     is_verified = Column(Boolean, default=False)
     upi_id = Column(String(100))
+    consent_records = Column(JSONB, nullable=True)  # DPDP 2023 consent audit log
     total_payouts_received = Column(Numeric(10, 2), default=0.00)
     total_premium_paid = Column(Numeric(10, 2), default=0.00)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

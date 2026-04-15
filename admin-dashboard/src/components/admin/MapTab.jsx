@@ -65,26 +65,29 @@ const CITY_COORDS = {
 
 // Zone color by risk level
 function zoneColor(risk, isActive, policies) {
-  if (isActive)   return { stroke: "#f43f5e", fill: "#f43f5e", fillOp: 0.35, weight: 3, dash: "8 6" }
-  if (risk > 1.3) return { stroke: "#f59e0b", fill: "#f59e0b", fillOp: 0.18, weight: 2, dash: "" }
-  if (risk > 1.1) return { stroke: "#a78bfa", fill: "#a78bfa", fillOp: 0.15, weight: 1.5, dash: "" }
-  if (policies > 200) return { stroke: "#10b981", fill: "#10b981", fillOp: 0.12, weight: 1.5, dash: "" }
-  return { stroke: "#6d28d9", fill: "#6d28d9", fillOp: 0.10, weight: 1, dash: "" }
+  if (isActive)   return { stroke: "#e11d48", fill: "#e11d48", fillOp: 0.25, weight: 3, dash: "8 6" }
+  if (risk > 1.3) return { stroke: "#f59e0b", fill: "#f59e0b", fillOp: 0.15, weight: 2, dash: "" }
+  if (risk > 1.1) return { stroke: "#3b82f6", fill: "#3b82f6", fillOp: 0.12, weight: 1.5, dash: "" }
+  if (policies > 200) return { stroke: "#10b981", fill: "#10b981", fillOp: 0.10, weight: 1.5, dash: "" }
+  return { stroke: "#6366f1", fill: "#6366f1", fillOp: 0.08, weight: 1, dash: "" }
 }
 
 // Scatter dots representing rider density within a zone
 function RiderDots({ zone, coords, isActive, riderCount }) {
   if (!riderCount) return null
-  // Cap visual dots — show max 50 scatter dots per zone regardless of 8k
-  const DOT_SCALE = Math.min(50, Math.ceil(riderCount / 120) + 1)
-  const ZONE_COLORS = ["#6d28d9", "#2563eb", "#10b981", "#f59e0b", "#ec4899", "#06b6d4", "#f97316", "#8b5cf6"]
-  const dotColor = isActive ? "#f43f5e" : ZONE_COLORS[zone % ZONE_COLORS.length]
+  
+  // Directly render exactly the true rider volume (no artificial 50-cap). 
+  // Divided by 3 just to prevent extreme DOM lag, so 1 dot = 3 riders. 
+  // With 8000 riders / 25 zones = ~320 riders/zone -> ~100 distinct visual dots per zone.
+  const DOT_SCALE = Math.max(1, Math.ceil(riderCount / 3))
+  const dotColor = isActive ? "#f43f5e" : "#0284c7" // Unified VERO brand blue vs vivid crimson
   const spread   = (ZONE_RADIUS[zone] || ZONE_RADIUS.default) / 111320 // approx degrees
 
   // Deterministic scatter using zone_id as seed
   const dots = Array.from({ length: DOT_SCALE }, (_, i) => {
-    const ang = (i / DOT_SCALE) * 2 * Math.PI + zone * 0.47
-    const r   = Math.sqrt((i + 1) / DOT_SCALE) * spread * 0.85
+    // Golden ratio spiral for organic distribution
+    const r = Math.sqrt(i / DOT_SCALE) * spread * 0.9
+    const ang = i * 2.39996 + zone * 0.47 
     return [coords[0] + r * Math.cos(ang), coords[1] + r * Math.sin(ang)]
   })
 
@@ -92,8 +95,8 @@ function RiderDots({ zone, coords, isActive, riderCount }) {
     <Circle
       key={`dot-${zone}-${i}`}
       center={pos}
-      radius={55 + (i % 3) * 20}
-      pathOptions={{ color: dotColor, fillColor: dotColor, fillOpacity: 0.75, weight: 0 }}
+      radius={25 + (i % 2) * 15} // Smaller radius for swarm effect
+      pathOptions={{ color: dotColor, fillColor: dotColor, fillOpacity: Math.random() * 0.5 + 0.3, weight: 0 }}
     />
   ))
 }
@@ -141,7 +144,9 @@ export default function MapTab() {
   const fetchMap = useCallback(async (silent = false) => {
     if (!silent) setLoading(true)
     try {
-      const res  = await fetch("/api/dashboards/admin/map")
+      const res  = await fetch("/api/dashboards/admin/map", {
+        headers: { "X-Admin-Key": import.meta.env.VITE_ADMIN_API_KEY || "vero_admin_key_2026" }
+      })
       const data = await res.json()
       setMapData(data)
       setLastUpdate(new Date())

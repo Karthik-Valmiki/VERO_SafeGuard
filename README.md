@@ -48,7 +48,7 @@ India has over **1 million platform-based food delivery workers** on Zomato and 
 
 **Resilient against coordinated fraud.** VERO's validation pipeline is grounded in independent data, device-level behavioral signals, and population-level anomaly detection — not GPS alone. A fraudster can fake a location coordinate. They cannot simultaneously fake a government weather feed, a third-party uptime monitor, and delivery activity patterns — across 500 devices in the same 15-minute window.
 
-**Stack:** React PWA · Node.js · PostgreSQL · Python ML Microservice · OpenWeatherMap · Tomorrow.io · IQAir · Razorpay
+**Stack:** React PWA · FastAPI (Python) · PostgreSQL · scikit-learn ML · Open-Meteo API · GDELT Project · Razorpay Sandbox
 
 ---
 
@@ -201,13 +201,13 @@ WEATHER / ENVIRONMENTAL TRIGGER:
   Duration  : Sustained > 1 hour continuously
   Signal    : Delivery time spike in zone — rain raises demand but
               destroys productivity. Spike confirms income impairment.
-  Source    : OpenWeatherMap + Tomorrow.io
+  Source    : Open-Meteo API (api.open-meteo.com) — real-time, no API key
 
 AQI TRIGGER:
   Threshold : AQI > 300 in rider's active zone
   Duration  : Sustained > 2 hours during shift
   Signal    : Sustained toxic air cuts trip completion rates
-  Source    : IQAir / CPCB open data
+  Source    : Open-Meteo Air Quality API (air-quality-api.open-meteo.com)
 
 PLATFORM BLACKOUT TRIGGER:
   Threshold : Platform uptime < 100% (Zomato and Swiggy monitored separately)
@@ -215,11 +215,12 @@ PLATFORM BLACKOUT TRIGGER:
               (12:00–14:30 OR 19:00–22:30)
   Signal    : Zero platform function = zero orders possible
               Fraud structurally impossible — third-party verified
-  Source    : DownDetector + custom scraper
+  Source    : Enriched simulation (DownDetector has no free public API)
   Eligibility extra: GPS in zone + app active + delivery attempt in last 30 mins
 
 SOCIAL DISRUPTION TRIGGER (Proactive — night before):
-  Sources   : Twitter/X, Google News, Government feeds, NewsAPI.org
+  Sources   : GDELT Project v2 (api.gdeltproject.org) — live global news scanner,
+              no API key required; pre-armed zone signals for high-confidence cities
   Scoring   : 12% single tweet → 74% trending + news → 91% official notice
   Threshold : Oracle confidence > 75%
   Night before → zones pre-armed → riders notified before disruption day
@@ -558,16 +559,15 @@ Riders use Android phones as their primary work tool. A PWA delivers an app-like
 | Layer | Technology | Reason |
 |---|---|---|
 | **Frontend** | React.js + Tailwind CSS (PWA) | Lightweight, fast, installable on Android |
-| **Backend** | Node.js + Express | Fast API development, strong ecosystem |
-| **Database** | PostgreSQL + Redis | Relational for policies/claims; Redis for real-time trigger state |
-| **ML Service** | Python + FastAPI microservice | scikit-learn, XGBoost, HuggingFace models |
-| **Weather API** | OpenWeatherMap + Tomorrow.io | Rain, hail, wind, dust storm signals for Indian cities |
-| **AQI API** | IQAir / CPCB open data | Real AQI data for Indian cities |
-| **News/Social** | NewsAPI.org + Twitter API v2 | Social disruption signal monitoring |
-| **Uptime Monitor** | DownDetector + custom scraper | Platform outage detection |
+| **Backend** | FastAPI (Python) | Fast async API, native ML integration |
+| **Database** | PostgreSQL | Relational for policies, claims, rider profiles |
+| **ML Service** | scikit-learn (MLPRegressor + IsolationForest) | Bundled in backend — no separate microservice |
+| **Weather API** | Open-Meteo (api.open-meteo.com) | Real-time weather, no API key, free forever |
+| **AQI API** | Open-Meteo Air Quality API | Real AQI (PM2.5, PM10, EU index), no API key |
+| **News/Social** | GDELT Project v2 | Global news scanner for bandh/curfew signals, free, no key |
+| **Platform** | Enriched simulation | DownDetector has no free public API — clearly labelled |
 | **Payments** | Razorpay Sandbox (UPI payouts + mandate) | Indian-native, free sandbox |
-| **Notifications** | Firebase Cloud Messaging + Twilio SMS | Covers data and non-data users |
-| **Hosting** | Railway / Render (free tier) | Simple deployment for hackathon |
+| **Deployment** | Docker Compose (all services containerised) | Single command startup for demo |
 
 ---
 
@@ -620,10 +620,10 @@ The hackathon MVP uses rule-based implementations wherever full ML models requir
 | Income loss coverage only | ✅ Met | Every trigger maps to lost working time — nothing else |
 | No health, accident, or vehicle coverage | ✅ Met | None of these are covered anywhere in the product |
 | Weekly pricing model | ✅ Met | Premium recalculated fresh every Sunday based on coming week's forecast |
-| AI/ML integration | ✅ Met | Used in premium calculation, disruption confidence scoring, and fraud detection |
-| Intelligent fraud detection | ✅ Met | 24-hr activation window, third-party trigger verification, GPS zone matching, loss ratio monitoring |
+| AI/ML integration | ✅ Met | MLPRegressor (metrics prediction) + IsolationForest (fraud detection) bundled in backend |
+| Intelligent fraud detection | ✅ Met | 24-hr activation window, Open-Meteo/GDELT trigger verification, GPS zone matching, loss ratio monitoring |
 | Parametric automation | ✅ Met | No rider action needed at any point — triggers and payouts are fully automated |
-| Integration capabilities | ✅ Met | OpenWeatherMap, Tomorrow.io, IQAir, NewsAPI, Twitter API, DownDetector, Razorpay |
+| Integration capabilities | ✅ Met | Open-Meteo (weather), Open-Meteo Air Quality (AQI), GDELT Project (social), Razorpay (payments) |
 
 ---
 
@@ -648,10 +648,10 @@ a payout is entirely outside a rider's control:
 
 | Trigger | What fires the payout | Can a rider fake this? |
 |---|---|---|
-| Weather / Hailstorm | OpenWeatherMap + Tomorrow.io meteorological feeds | No |
-| AQI | IQAir / CPCB government sensor network | No |
-| Platform blackout | DownDetector + custom third-party uptime scraper | No |
-| Social disruption | 3 independent news/govt sources + restaurant availability collapse | No |
+| Weather / Hailstorm | Open-Meteo real-time meteorological API | No |
+| AQI | Open-Meteo Air Quality API (PM2.5, PM10, EU AQI) | No |
+| Platform blackout | Enriched simulation with realistic report data | No |
+| Social disruption | GDELT Project v2 live news scan + pre-armed zone signals | No |
 
 A fraudster sitting at home cannot manufacture a hailstorm on
 OpenWeatherMap, take Zomato offline on DownDetector, or collapse

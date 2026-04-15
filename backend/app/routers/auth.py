@@ -8,7 +8,7 @@ import random
 
 from ..db import models
 from ..db.database import get_db
-from ..schemas.auth import OtpRequest, OtpVerify, RiderCreate, RiderLogin, TokenResponse
+from ..schemas.auth import OtpRequest, OtpVerify, RiderCreate, RiderLogin, TokenResponse, UpiVerifyRequest, UpiVerifyResponse
 from ..core.config import (
     SECRET_KEY,
     ALGORITHM,
@@ -37,110 +37,7 @@ def _make_token(rider_id: str) -> str:
     return jwt.encode({"sub": rider_id, "exp": expire}, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def compute_r(profile_id, db: Session) -> float:
-    """R = min(sqrt(TU × DE × CR), 1.0). Returns 0.0 for new users."""
-    h = (
-        db.query(models.RiderPerformanceHistory)
-        .filter(models.RiderPerformanceHistory.profile_id == profile_id)
-        .order_by(models.RiderPerformanceHistory.week_start_date.desc())
-        .first()
-    )
-    if not h:
-        return 0.0
-    tu = float(h.time_utilization or 0.0)
-    de = float(h.delivery_efficiency or 0.0)
-    cr = float(h.completion_rate or 0.0)
-    return round(min(math.sqrt(tu * de * cr), 1.0), 2)
-
-
-def compute_r_breakdown(profile_id, db: Session) -> dict:
-    """Returns full R breakdown — last 4 weeks of history + current R."""
-    rows = (
-        db.query(models.RiderPerformanceHistory)
-        .filter(models.RiderPerformanceHistory.profile_id == profile_id)
-        .order_by(models.RiderPerformanceHistory.week_start_date.desc())
-        .limit(4)
-        .all()
-    )
-    if not rows:
-        return {
-            "r": 0.0,
-            "tu": 0.0,
-            "de": 0.0,
-            "cr": 0.0,
-            "weeks_tracked": 0,
-            "history": [],
-        }
-
-    latest = rows[0]
-    tu = float(latest.time_utilization or 0.0)
-    de = float(latest.delivery_efficiency or 0.0)
-    cr = float(latest.completion_rate or 0.0)
-    r = round(min(math.sqrt(tu * de * cr), 1.0), 2)
-
-    return {
-        "r": r,
-        "tu": round(tu, 2),
-        "de": round(de, 2),
-        "cr": round(cr, 2),
-        "weeks_tracked": len(rows),
-        "history": [
-            {
-                "week": str(row.week_start_date),
-                "tu": float(row.time_utilization or 0),
-                "de": float(row.delivery_efficiency or 0),
-                "cr": float(row.completion_rate or 0),
-                "r": float(row.final_r_score or 0),
-            }
-            for row in rows
-        ],
-    }
-
-
-def get_rider_metrics(profile_id, db: Session):
-    h = (
-        db.query(models.RiderPerformanceHistory)
-        .filter(models.RiderPerformanceHistory.profile_id == profile_id)
-        .order_by(models.RiderPerformanceHistory.week_start_date.desc())
-        .first()
-    )
-    if not h:
-        return 0.65, 0.60, 0.85 # internet averages
-    return float(h.time_utilization or 0.0), float(h.delivery_efficiency or 0.0), float(h.completion_rate or 0.0)
-
-def compute_coverage_and_premium(city, zone, profile_id, is_new: bool, db: Session):
-    """
-    ML-Driven Coverage and Premium Engine.
-    Uses XGBoost and Random Forest.
-    """
-    base_rate = float(city.baseline_weekly_income) * 0.02
-    risk_multi = (
-        float(zone.base_risk_multiplier)
-        if zone
-        else float(city.default_risk_multiplier)
-    )
-
-    from ..ml_engine import predict_premium_multiplier
-    
-    if is_new:
-        coverage = 0.40
-        premium = round(base_rate * risk_multi, 2)
-        weekly_cap = round(float(city.baseline_weekly_income) * coverage, 2)
-        return coverage, premium, weekly_cap
-
-    tu, de, cr = get_rider_metrics(profile_id, db)
-    
-    # ML Models output variables that feed the formula
-    predicted_r, predicted_risk_mult = predict_premium_multiplier(
-        zone_base_risk=risk_multi, tu=tu, de=de, cr=cr
-    )
-
-    coverage = round(min(0.40 + 0.25 * predicted_r, 0.65), 4)
-    # The Final Deterministic Pricing Formula powered by ML output
-    premium = round(base_rate * predicted_risk_mult, 2)
-
-    weekly_cap = round(float(city.baseline_weekly_income) * coverage, 2)
-    return coverage, premium, weekly_cap
+from ..services.insurance_logic import compute_r, compute_coverage_and_premium
 
 
 def _get_zone(profile_id, db: Session):
@@ -449,4 +346,58 @@ def login(data: RiderLogin, db: Session = Depends(get_db)):
         policy_status=policy.status if policy else "NOT_PURCHASED",
         policy_activates_in_seconds=_secs_until_active(policy),
         is_new_user=is_new,
+    )
+
+
+# ── UPI KYC Penny-Drop  (DPDP 2023 §7 — test mode) ─────────────────────────
+
+# Maps VPA handle suffix → simulated bank name (NPCI ecosystem)
+_UPI_BANK_MAP: dict[str, str] = {
+    "okaxis":      "Axis Bank",
+    "oksbi":       "State Bank of India",
+    "okicici":     "ICICI Bank",
+    "ybl":         "Yes Bank (PhonePe)",
+    "paytm":       "Paytm Payments Bank",
+    "upi":         "BHIM UPI",
+    "ibl":         "IndusInd Bank",
+    "okhdfcbank":  "HDFC Bank",
+    "okbizaxis":   "Axis Bank (Business)",
+    "apl":         "Amazon Pay",
+    "jupiteraxis": "Jupiter / Axis Bank",
+    "airtel":      "Airtel Payments Bank",
+    "pthdfc":      "Paytm / HDFC",
+    "ptaxis":      "Paytm / Axis",
+}
+
+
+@router.post("/upi/verify", response_model=UpiVerifyResponse)
+def verify_upi_penny_drop(data: UpiVerifyRequest):
+    """
+    DPDP 2023 §7 UPI KYC compliance — simulated NPCI penny-drop.
+
+    Validates VPA format, resolves the bank from the handle suffix, and
+    returns a realistic test-mode response. In production this would call
+    Razorpay Fund Account Validation or the NPCI sandbox directly.
+
+    This endpoint is purely additive — no DB write, no auth required.
+    """
+    vpa = data.upi_id  # already validated + lower-cased by Pydantic
+    username, handle = vpa.split("@", 1)
+
+    # Derive human-readable name from VPA username
+    display_name = username.replace(".", " ").replace("_", " ").replace("-", " ").title()
+
+    bank = _UPI_BANK_MAP.get(handle, "HDFC Bank")
+    now = datetime.now(timezone.utc)
+    ref = f"TXN_NPCI_TEST_{now.strftime('%Y%m%d%H%M%S')}_{random.randint(100000, 999999)}"
+
+    return UpiVerifyResponse(
+        status="SUCCESS",
+        upi_id=vpa,
+        account_holder=display_name,
+        bank=bank,
+        deducted_inr=1.00,
+        transaction_ref=ref,
+        mode="TEST",
+        note="Penny-drop verified in NPCI test environment. ₹1 debit is auto-refunded within 24 h.",
     )

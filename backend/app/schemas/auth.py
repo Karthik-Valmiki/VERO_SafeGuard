@@ -1,3 +1,4 @@
+import re
 from pydantic import BaseModel, Field, field_validator
 
 SUPPORTED_CITIES = [
@@ -77,3 +78,31 @@ class PremiumQuote(BaseModel):
     premium: float
     weekly_cap: float
     is_new_user: bool
+
+
+# ── DPDP 2023 UPI KYC Penny-Drop (test mode) ─────────────────────────────────
+
+_UPI_FORMAT = re.compile(r"^[a-zA-Z0-9._-]{2,}@[a-zA-Z]{2,}$")
+
+
+class UpiVerifyRequest(BaseModel):
+    upi_id: str
+
+    @field_validator("upi_id")
+    @classmethod
+    def validate_format(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not _UPI_FORMAT.match(v):
+            raise ValueError("Invalid UPI ID. Expected format: username@handle (e.g. 9876543210@upi)")
+        return v
+
+
+class UpiVerifyResponse(BaseModel):
+    status: str
+    upi_id: str
+    account_holder: str
+    bank: str
+    deducted_inr: float
+    transaction_ref: str
+    mode: str
+    note: str

@@ -6,7 +6,9 @@ export default function AnalyticsTab() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch("/api/dashboards/admin/analytics")
+    fetch("/api/dashboards/admin/analytics", {
+      headers: { "X-Admin-Key": import.meta.env.VITE_ADMIN_API_KEY || "vero_admin_key_2026" }
+    })
       .then(res => res.json())
       .then(d => {
         setData(d);

@@ -19,6 +19,72 @@ function getRiskLevel(m) {
   return "LOW"
 }
 
+function ZoneCard({ riderD, quote }) {
+  if (!riderD) return null
+  const zoneName = riderD.zone || "Zone not assigned"
+  const city     = riderD.city || "—"
+  const isNew    = riderD.is_new_user
+  const m        = Number(quote?.zone_risk_multiplier || 1)
+  const level    = getRiskLevel(m)
+
+  const badgeClass = level === "HIGH"
+    ? "bg-red-500/10 border border-red-500/20 text-red-400"
+    : level === "MEDIUM"
+    ? "bg-yellow-500/10 border border-yellow-500/20 text-yellow-400"
+    : "bg-green-500/10 border border-green-500/20 text-green-400"
+
+  const valueClass = level === "HIGH"
+    ? "text-red-400"
+    : level === "MEDIUM"
+    ? "text-yellow-400"
+    : "text-green-400"
+
+  const label = RISK_COLORS[level].label
+
+  return (
+    <div className="bg-dark-800/60 border border-dark-700/50 rounded-2xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <MapPin size={14} className="text-brand-400" />
+          <span className="text-sm font-semibold text-white">Your Delivery Zone</span>
+        </div>
+        <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ${badgeClass}`}>
+          {label}
+        </span>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-base font-display font-bold text-white">{zoneName}</p>
+          <p className="text-[11px] text-gray-500 mt-0.5 flex items-center gap-1">
+            <MapPin size={9} /> {city}
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-0.5">Risk multiplier</p>
+          <p className={`text-lg font-display font-bold ${valueClass}`}>{m.toFixed(2)}×</p>
+        </div>
+      </div>
+
+      {isNew ? (
+        <div className="mt-3 rounded-xl px-3 py-2 bg-violet-500/10 border border-violet-500/20">
+          <p className="text-[11px] text-violet-300 leading-relaxed">
+            <span className="font-semibold">New rider</span> — city-level baseline pricing applies.
+            Your zone risk score personalises from week 3 onward.
+          </p>
+        </div>
+      ) : (
+        <div className="mt-3 rounded-xl px-3 py-2 bg-white/5 border border-white/10">
+          <p className="text-[11px] text-gray-400 leading-relaxed">
+            <span className="font-semibold text-white">Returning rider</span> — your premium and
+            coverage are personalised to this zone using your R-score.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function RiskForecastCard({ quote }) {
   if (!quote) return null
   const m = Number(quote.zone_risk_multiplier || 1)
@@ -38,7 +104,7 @@ function RiskForecastCard({ quote }) {
         <div className={`h-full ${bar} rounded-full transition-all duration-700`} style={{ width: `${pct}%` }} />
       </div>
       <div className="flex justify-between text-[11px] text-gray-500">
-        <span>Zone: {quote.city}</span>
+        <span>Zone: {quote.zone_name || quote.city}</span>
         <span>Risk {m.toFixed(2)}×</span>
       </div>
       <p className="text-[11px] text-gray-500 mt-1.5">
@@ -106,13 +172,12 @@ function UpsellBanner({ quote, onActivate }) {
 }
 
 function ActivePolicyCard({ policy, onViewPolicy }) {
-  // Backend now returns all fields directly
-  const premiumAmt  = Number(policy.premium || 0)
-  const coveragePct = Number(policy.coverage_pct ?? Math.round((policy.coverage_ratio || 0) * 100))
-  const weeklyCapAmt= Number(policy.weekly_cap || premiumAmt * 10)
-  const usedAmt     = Number(policy.total_paid_out || 0)
-  const remaining   = Number(policy.remaining_cap ?? Math.max(0, weeklyCapAmt - usedAmt))
-  const pct         = weeklyCapAmt > 0 ? Math.min(100, (usedAmt / weeklyCapAmt) * 100) : 0
+  const premiumAmt   = Number(policy.premium || 0)
+  const coveragePct  = Number(policy.coverage_pct ?? Math.round((policy.coverage_ratio || 0) * 100))
+  const weeklyCapAmt = Number(policy.weekly_cap || 0)
+  const usedAmt      = Number(policy.total_paid_out || 0)
+  const remaining    = Number(policy.remaining_cap ?? Math.max(0, weeklyCapAmt - usedAmt))
+  const pct          = weeklyCapAmt > 0 ? Math.min(100, (usedAmt / weeklyCapAmt) * 100) : 0
   return (
     <div className="card !p-4 border-brand-500/20 bg-gradient-to-br from-brand-500/5 to-dark-800">
       <div className="flex items-center justify-between mb-3">
@@ -163,7 +228,7 @@ export default function Dashboard() {
     try {
       await logActivity(quote.zone_id)
       alert("Location pinged! Your telemetry is successfully synced to " + quote.city + ".")
-    } catch(e) {
+    } catch (e) {
       alert("Failed to ping location.")
     } finally {
       setPinging(false)
@@ -226,6 +291,12 @@ export default function Dashboard() {
                     <span className="text-[11px] text-gray-500 flex items-center gap-1">
                       <MapPin size={10} /> {riderD?.city || rider?.city}
                     </span>
+                    {(riderD?.zone) && (
+                      <>
+                        <span className="w-1 h-1 rounded-full bg-dark-600" />
+                        <span className="text-[11px] text-gray-400 font-medium">{riderD.zone}</span>
+                      </>
+                    )}
                     <span className="w-1 h-1 rounded-full bg-dark-600" />
                     <span className="text-[11px] text-gray-500">{riderD?.platform || rider?.platform}</span>
                     {!riderD?.is_new_user && (
@@ -245,7 +316,7 @@ export default function Dashboard() {
                 {[
                   { label: "Tenure",  value: `${riderD?.r_breakdown?.weeks_tracked || 0}w`, sub: "weeks active" },
                   { label: "R-Score", value: riderD?.is_new_user ? "—" : Number(riderD?.reliability_score || 0).toFixed(2), sub: "reliability" },
-                  { label: "Shift",   value: riderD?.shift_hours?.start || rider?.shift_start?.slice(0,5) || "—", sub: "shift start" },
+                  { label: "Shift",   value: riderD?.shift_hours?.start || rider?.shift_start?.slice(0, 5) || "—", sub: "shift start" },
                 ].map(({ label, value, sub }) => (
                   <div key={label} className="bg-dark-800/60 border border-dark-700/50 rounded-xl p-3 text-center">
                     <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">{label}</p>
@@ -254,6 +325,8 @@ export default function Dashboard() {
                   </div>
                 ))}
               </div>
+
+              <ZoneCard riderD={riderD} quote={quote} />
 
               {isPending && (
                 <div className="flex items-center gap-3 bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-4 py-3">
@@ -272,13 +345,13 @@ export default function Dashboard() {
 
               <RiskForecastCard quote={quote} />
 
-              {/* Start Telemetry Ping */}
+              {/* Active Tracking */}
               <div className="bg-dark-800/40 border border-dark-700/40 rounded-2xl p-4 mb-4">
                 <p className="text-xs font-semibold mb-1 text-white flex items-center gap-2">
                   <MapPin size={14} className="text-brand-400" /> Active Tracking
                 </p>
                 <p className="text-[10px] text-gray-500 mb-3">Sync your live delivery location to validate payouts.</p>
-                <button 
+                <button
                   onClick={handlePing}
                   disabled={pinging}
                   className="w-full flex items-center justify-center gap-2 py-2 bg-dark-700 hover:bg-dark-600 disabled:bg-dark-800 text-white font-bold rounded-xl text-xs transition-all"
