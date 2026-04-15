@@ -1,25 +1,21 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # VERO SafeGuard — Docker Compose
 #
-# Single-command startup for evaluators:
-#   cp .env.example .env
+# Run everything with one command:
 #   docker compose up --build
 #
-# Services and their URLs:
-#   Rider App        → http://localhost
-#   Admin Dashboard  → http://localhost:8080
-#   Backend API docs → http://localhost:8000/docs
+# The app opens at http://localhost
+# Admin dashboard at http://localhost:8080
+# Backend API docs at http://localhost:8000/docs
 #
-# Startup sequence (health-gated):
-#   db (pg_isready) → backend (HTTP /) → frontend + admin-dashboard
+# All secrets (DB password, Razorpay keys, admin API key) are loaded from
+# the .env file in this directory. Never commit secrets inline.
 #
-# All credentials are loaded from .env (gitignored).
-# .env.example contains working defaults — no edits needed for demo runs.
+# To override any variable, set it in your shell before running:
+#   set RAZORPAY_KEY_ID=rzp_live_xxxx
+#   docker compose up --build
 #
-# Compliance:
-#   IRDAI Sandbox Regulation 2023 — parametric trigger thresholds
-#   DPDP Act 2023 §5/§7           — OTP, explicit consent, UPI KYC
-#   NPCI UPI ecosystem            — VPA validation + bank handle resolution
+# You do NOT need to edit this file for normal use.
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
@@ -34,9 +30,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      # pg_isready confirms the server is accepting connections on the right user+db.
-      # 10 retries × 5s = 50s max wait — sufficient for cold-start on most hardware.
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-vero}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -45,18 +39,11 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
-    labels:
-      - "vero.service=backend"
-      - "vero.compliance=IRDAI-Sandbox-2023,DPDP-2023,NPCI-UPI"
-      - "vero.ml=IsolationForest+MLPRegressor"
     environment:
       DATABASE_URL: ${DATABASE_URL}
       RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID}
       RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET}
       ADMIN_API_KEY: ${ADMIN_API_KEY}
-      # Suppress .pyc files and enable immediate log output in Docker
-      PYTHONDONTWRITEBYTECODE: "1"
-      PYTHONUNBUFFERED: "1"
     env_file:
       - .env
     ports:
@@ -65,8 +52,6 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      # Checks the root health endpoint. 15 retries × 10s + 60s start_period
-      # gives the backend up to 210s total for DB migration + ML model loading.
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/')\""]
       interval: 10s
       timeout: 5s
@@ -84,9 +69,6 @@ services:
         VITE_ADMIN_PASS: ${VITE_ADMIN_PASS}
         VITE_ADMIN_API_KEY: ${VITE_ADMIN_API_KEY}
       cache_from: []
-    labels:
-      - "vero.service=rider-app"
-      - "vero.compliance=DPDP-2023-5-phase-onboarding,NPCI-UPI-KYC"
     ports:
       - "80:80"
     restart: unless-stopped
@@ -110,10 +92,6 @@ services:
         VITE_ADMIN_PASS: ${VITE_ADMIN_PASS}
         VITE_ADMIN_API_KEY: ${VITE_ADMIN_API_KEY}
       cache_from: []
-    labels:
-      - "vero.service=admin-dashboard"
-      - "vero.compliance=IRDAI-Sandbox-2023"
-      - "vero.ml=FraudIntelligence+TriggerSimulator+8kRiderGenerator"
     ports:
       - "8080:80"
     restart: unless-stopped
