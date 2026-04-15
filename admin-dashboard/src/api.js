@@ -29,6 +29,9 @@ export const getAdminZones      = ()              => api.get("/dashboards/admin/
 export const simulateTrigger = (data)             => api.post("/triggers/simulate", data)
 export const generateRiders       = ()            => api.post("/dashboards/admin/generate-riders")
 export const getGenerateStatus    = ()            => api.get("/dashboards/admin/generate-riders/status")
+export const getAdminFraudLog    = ()              => api.get("/dashboards/admin/fraud-log")
+export const getAdminMlModels    = ()              => api.get("/dashboards/admin/ml-models")
+export const getRiskForecast     = ()              => api.get("/dashboards/admin/risk-forecast")
 export const logActivity     = (zone_id)           => api.post(`/tracking/activity?zone_id=${zone_id}`)
 
 // Notification APIs

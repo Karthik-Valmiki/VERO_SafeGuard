@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react"
 import {
   Shield, MapPin, Phone, CreditCard, LogOut, ChevronRight,
   TrendingUp, Bell, HelpCircle, Star, Clock,
-  Award, BadgeCheck, Flame, Lock
+  Award, BadgeCheck, Flame, Lock, Wallet, Zap
 } from "lucide-react"
 import { useAuth } from "../context/AuthContext"
 import { useNavigate } from "react-router-dom"
@@ -180,12 +180,12 @@ export default function Profile() {
 
             <div className="grid grid-cols-3 gap-2">
               {[
-                { label: "Premium discount", value: tier.disc,     icon: "💸" },
-                { label: "Max coverage",     value: tier.coverage, icon: "🛡️" },
-                { label: "Payout speed",     value: tier.payout,   icon: "⚡" },
+                { label: "Premium discount", value: tier.disc,     icon: <Wallet size={16} className="mb-1 mx-auto text-gray-400" /> },
+                { label: "Max coverage",     value: tier.coverage, icon: <Shield size={16} className="mb-1 mx-auto text-gray-400" /> },
+                { label: "Payout speed",     value: tier.payout,   icon: <Zap size={16} className="mb-1 mx-auto text-gray-400" /> },
               ].map(({ label, value, icon }) => (
                 <div key={label} className="bg-dark-900/50 rounded-xl p-2.5 text-center">
-                  <p className="text-base mb-0.5">{icon}</p>
+                  {icon}
                   <p className={`text-xs font-bold ${tier.color}`}>{value}</p>
                   <p className="text-[9px] text-gray-600 leading-tight mt-0.5">{label}</p>
                 </div>

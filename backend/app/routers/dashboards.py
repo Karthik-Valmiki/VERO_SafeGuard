@@ -611,6 +611,187 @@ def get_admin_notifications(db: Session = Depends(get_db), _admin: str = Depends
     return {"notifications": notifs}
 
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  PHASE 3 — PREDICTIVE RISK FORECAST
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/admin/risk-forecast")
+def get_risk_forecast(db: Session = Depends(get_db), _admin: str = Depends(verify_admin_key)):
+    """
+    Phase 3 — Predictive analysis of next week's likely weather/disruption claims.
+
+    Methodology (three-signal composite model):
+      Signal 1 — Historical Trigger Frequency (weight 0.45)
+        Counts how many TriggerEvents fired in this zone over the past 30 days.
+        Normalised to [0,1] against the max-frequency zone.
+      Signal 2 — Zone Risk Multiplier (weight 0.30)
+        The actuarial base_risk_multiplier already encodes long-term climate and
+        civic risk for the zone. High-risk zones are inherently more likely to trigger.
+      Signal 3 — Live 7-Day Weather Forecast (weight 0.25)
+        Calls Open-Meteo /v1/forecast for the zone's coordinates — the same API
+        used in the trigger pipeline — and reads max daily precipitation and
+        max temperature over the next 7 days. High rainfall or extreme heat inflates
+        the weather signal toward 1.0.
+
+    Output: per-zone probability score in [0,1] with top-3 driver reasons,
+    sorted by descending probability for the admin dashboard card.
+    """
+    import requests as _req
+
+    zones = (
+        db.query(models.GeoZone, models.CityBenchmark)
+        .join(models.CityBenchmark, models.GeoZone.city_id == models.CityBenchmark.city_id)
+        .all()
+    )
+    if not zones:
+        return {"forecast": [], "generated_at": datetime.now(timezone.utc).isoformat(), "methodology": "No zones found"}
+
+    now = datetime.now(timezone.utc)
+    thirty_days_ago = now - timedelta(days=30)
+
+    # ── Signal 1: historical trigger frequency per zone ────────────────────
+    freq_rows = (
+        db.query(models.TriggerEvent.zone_id, func.count(models.TriggerEvent.event_id).label("cnt"))
+        .filter(models.TriggerEvent.started_at >= thirty_days_ago)
+        .group_by(models.TriggerEvent.zone_id)
+        .all()
+    )
+    freq_map = {row.zone_id: row.cnt for row in freq_rows}
+    max_freq = max(freq_map.values(), default=1) or 1
+
+    # ── Pull zone coordinates for weather forecast ─────────────────────────
+    # Reuse coordinates from mock_api.py — same source of truth
+    ZONE_COORDS = {
+        1: {"lat": 12.9784, "lon": 77.6408}, 2: {"lat": 12.9352, "lon": 77.6245},
+        3: {"lat": 12.9698, "lon": 77.7499}, 4: {"lat": 13.0418, "lon": 80.2341},
+        5: {"lat": 13.0012, "lon": 80.2565}, 6: {"lat": 12.9815, "lon": 80.2180},
+        7: {"lat": 13.0878, "lon": 80.2100}, 8: {"lat": 19.0544, "lon": 72.8402},
+        9: {"lat": 19.1136, "lon": 72.8697}, 10: {"lat": 19.0176, "lon": 72.8562},
+        11: {"lat": 19.2183, "lon": 72.8543}, 12: {"lat": 28.6315, "lon": 77.2167},
+        13: {"lat": 28.5672, "lon": 77.2374}, 14: {"lat": 28.7495, "lon": 77.0667},
+        15: {"lat": 28.5921, "lon": 77.0460}, 16: {"lat": 17.3850, "lon": 78.4867},
+        17: {"lat": 17.4126, "lon": 78.4482}, 18: {"lat": 17.4399, "lon": 78.4983},
+        19: {"lat": 18.5362, "lon": 73.8938}, 20: {"lat": 18.5074, "lon": 73.8077},
+        21: {"lat": 22.5605, "lon": 88.3509}, 22: {"lat": 22.5804, "lon": 88.4183},
+    }
+
+    # Cache one Open-Meteo call per unique lat/lon pair to avoid redundant requests
+    weather_cache: dict = {}
+
+    def _fetch_forecast(lat: float, lon: float) -> dict:
+        key = f"{lat:.4f},{lon:.4f}"
+        if key in weather_cache:
+            return weather_cache[key]
+        try:
+            url = (
+                f"https://api.open-meteo.com/v1/forecast"
+                f"?latitude={lat}&longitude={lon}"
+                f"&daily=precipitation_sum,temperature_2m_max,windspeed_10m_max"
+                f"&timezone=Asia%2FKolkata&forecast_days=7"
+            )
+            resp = _req.get(url, timeout=5)
+            if resp.status_code == 200:
+                data = resp.json().get("daily", {})
+                result = {
+                    "max_rain": max(data.get("precipitation_sum", [0]) or [0]),
+                    "max_temp": max(data.get("temperature_2m_max", [30]) or [30]),
+                    "max_wind": max(data.get("windspeed_10m_max", [0]) or [0]),
+                    "live": True,
+                }
+                weather_cache[key] = result
+                return result
+        except Exception as e:
+            logger.warning(f"[FORECAST] Weather API failed for {lat},{lon}: {e}")
+        fallback = {"max_rain": 0.0, "max_temp": 32.0, "max_wind": 0.0, "live": False}
+        weather_cache[key] = fallback
+        return fallback
+
+    forecast = []
+    for zone, city in zones:
+        coords = ZONE_COORDS.get(zone.zone_id, {"lat": 20.5937, "lon": 78.9629})
+        wx = _fetch_forecast(coords["lat"], coords["lon"])
+
+        # ── Signal 1: historical frequency [0,1] ──────────────────────────
+        hist_count = freq_map.get(zone.zone_id, 0)
+        sig_history = round(hist_count / max_freq, 4)
+
+        # ── Signal 2: zone risk multiplier [0,1] ──────────────────────────
+        risk_raw = float(zone.base_risk_multiplier)
+        sig_risk = round(min(risk_raw / 1.5, 1.0), 4)   # 1.5× = max expected multiplier
+
+        # ── Signal 3: weather forecast [0,1] ──────────────────────────────
+        # Heavy rain: anything ≥35mm scores 1.0, scales linearly below
+        rain_score = min(wx["max_rain"] / 35.0, 1.0)
+        # Extreme heat: anything ≥42°C scores 1.0
+        heat_score = max(0.0, (wx["max_temp"] - 30.0) / 12.0)
+        heat_score = min(heat_score, 1.0)
+        sig_weather = round(min(max(rain_score, heat_score * 0.6), 1.0), 4)
+
+        # ── Composite probability (weighted sum) ───────────────────────────
+        probability = round(
+            sig_history * 0.45 + sig_risk * 0.30 + sig_weather * 0.25,
+            4,
+        )
+        probability = min(probability, 1.0)
+
+        # ── Human-readable driver reasons ─────────────────────────────────
+        drivers = []
+        if sig_history >= 0.5:
+            drivers.append(f"{hist_count} trigger event{'s' if hist_count != 1 else ''} in past 30 days")
+        elif sig_history > 0:
+            drivers.append(f"{hist_count} historical trigger in past 30 days")
+        if risk_raw >= 1.2:
+            drivers.append(f"High zone risk multiplier ({risk_raw:.1f}×)")
+        if wx["max_rain"] >= 20:
+            drivers.append(f"{'LIVE' if wx['live'] else 'Est.'} forecast: {wx['max_rain']:.0f}mm rain next 7 days")
+        if wx["max_temp"] >= 38:
+            drivers.append(f"{'LIVE' if wx['live'] else 'Est.'} forecast: {wx['max_temp']:.0f}°C extreme heat")
+        if not drivers:
+            drivers.append("Low historical activity — minimal risk expected")
+
+        # ── Determine risk tier for UI coloring ───────────────────────────
+        if probability >= 0.65:
+            tier, tier_color = "HIGH", "red"
+        elif probability >= 0.35:
+            tier, tier_color = "MEDIUM", "amber"
+        else:
+            tier, tier_color = "LOW", "green"
+
+        forecast.append({
+            "zone_id":     zone.zone_id,
+            "zone_name":   zone.zone_name,
+            "city":        city.city_name,
+            "probability": probability,
+            "probability_pct": round(probability * 100, 1),
+            "tier":        tier,
+            "tier_color":  tier_color,
+            "signals": {
+                "historical_frequency": sig_history,
+                "zone_risk":            sig_risk,
+                "weather_forecast":     sig_weather,
+            },
+            "forecast_detail": {
+                "max_rain_mm":  round(wx["max_rain"], 1),
+                "max_temp_c":   round(wx["max_temp"], 1),
+                "max_wind_kmh": round(wx["max_wind"], 1),
+                "live_weather": wx["live"],
+            },
+            "drivers":          drivers[:3],
+            "historical_events": hist_count,
+        })
+
+    forecast.sort(key=lambda x: x["probability"], reverse=True)
+
+    return {
+        "forecast": forecast,
+        "generated_at": now.isoformat(),
+        "model_version": "v1.0 — 3-signal composite (history 45% + zone_risk 30% + weather 25%)",
+        "data_source": "Open-Meteo 7-day forecast (live) + DB historical triggers + zone risk index",
+        "horizon": "Next 7 days",
+    }
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  GENERATE RIDERS  (background job + progress endpoint)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -709,17 +890,43 @@ def _generate_riders_bg(target_users: int):
             db.commit()
             deleted += len(ids)
         logger.info(f"[GENERATE] Cleared {deleted} old mock riders.")
-        _update_gen(12, "Clearing previous trigger events and payouts...")
+        _update_gen(12, "Clearing previous trigger events and payouts for mock data...")
 
-        # Wipe all trigger events, payouts, and fraud logs so the Live Execution
-        # Feed, fraud analytics, and KPI cards reflect only the current generation.
-        # Real-rider payouts are also cleared because they are tied to trigger
-        # events that are no longer valid after a full regeneration.
-        db.query(models.FraudCheckLog).delete(synchronize_session=False)
-        db.query(models.Payout).delete(synchronize_session=False)
+        # ── Scope deletion to mock rider data only ─────────────────────────
+        # Real riders (platform != 'mock_simulator') and their payouts/policies
+        # are NEVER touched. We only wipe mock-linked records.
+        all_mock_ids = [
+            r[0] for r in db.query(models.RiderProfile.profile_id).filter(
+                models.RiderProfile.platform == "mock_simulator"
+            ).all()
+        ]
+
+        if all_mock_ids:
+            # Get policy IDs belonging to mock riders
+            mock_policy_ids = [
+                p[0] for p in db.query(models.Policy.policy_id).filter(
+                    models.Policy.profile_id.in_(all_mock_ids)
+                ).all()
+            ]
+
+            # Delete payouts that belong to mock policies only
+            if mock_policy_ids:
+                db.query(models.Payout).filter(
+                    models.Payout.policy_id.in_(mock_policy_ids)
+                ).delete(synchronize_session=False)
+
+            # Delete fraud logs for mock riders
+            db.query(models.FraudCheckLog).filter(
+                models.FraudCheckLog.profile_id.in_(all_mock_ids)
+            ).delete(synchronize_session=False)
+
+        # Clear ALL trigger events (they are zone-level, not rider-level).
+        # Real rider payouts have already been preserved above since we only
+        # deleted mock-policy payouts. Trigger events from the previous
+        # simulation run are stale and should not appear in the new feed.
         db.query(models.TriggerEvent).delete(synchronize_session=False)
         db.commit()
-        logger.info("[GENERATE] Cleared all trigger events, payouts, and fraud logs.")
+        logger.info("[GENERATE] Cleared mock payouts, fraud logs, and stale trigger events. Real user data preserved.")
 
         _update_gen(15, f"Cleared {deleted} old records. Building {target_users} riders...")
 
