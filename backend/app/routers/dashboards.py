@@ -12,7 +12,7 @@ All endpoints are production-grade:
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, case
 from datetime import datetime, timezone, timedelta
 import uuid
 import random
@@ -21,8 +21,9 @@ import logging
 
 from ..db import models
 from ..db.database import get_db, SessionLocal
-from ..core.security import get_current_rider
-from ..routers.auth import compute_r, compute_r_breakdown, compute_coverage_and_premium
+from ..core.security import get_current_rider, verify_admin_key
+from ..services.insurance_logic import compute_r, compute_r_breakdown, compute_coverage_and_premium
+from ..ml_engine import predict_rider_metrics
 
 router = APIRouter(prefix="/dashboards", tags=["Dashboards"])
 logger = logging.getLogger(__name__)
@@ -165,7 +166,7 @@ def get_my_dashboard(
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/admin/summary")
-def get_admin_dashboard(db: Session = Depends(get_db)):
+def get_admin_dashboard(db: Session = Depends(get_db), _admin: str = Depends(verify_admin_key)):
     """Admin overview — flat keys for frontend, enriched disruptions with zone names."""
     total_riders      = db.query(models.RiderProfile).count()
     active_policies   = db.query(models.Policy).filter(models.Policy.status == "ACTIVE").count()
@@ -221,7 +222,7 @@ def get_admin_dashboard(db: Session = Depends(get_db)):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/admin/analytics")
-def get_admin_analytics(db: Session = Depends(get_db)):
+def get_admin_analytics(db: Session = Depends(get_db), _admin: str = Depends(verify_admin_key)):
     """Analytics: premium vs payout per city, weekly payout trend, zone risk table."""
     city_rows  = db.query(models.CityBenchmark).all()
     city_stats = []
@@ -309,17 +310,34 @@ def get_admin_analytics(db: Session = Depends(get_db)):
     }
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  ADMIN LIVE PAYOUTS  (fixed N+1, enriched per event)
-# ══════════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════
+#  ADMIN LIVE PAYOUTS  
+# ═══════════════════════════════════════
 
 @router.get("/admin/live-payouts")
-def get_live_payouts(limit: int = 100, db: Session = Depends(get_db)):
+def get_live_payouts(limit: int = 100, db: Session = Depends(get_db), _admin: str = Depends(verify_admin_key)):
     """
     Last N payouts enriched with rider name, zone, event type, rider source.
     Single JOIN query — no N+1 lookups.
     Groups payouts by event_id so the frontend can render expandable cards.
     """
+    recent_events = db.query(models.TriggerEvent.event_id).order_by(models.TriggerEvent.started_at.desc()).limit(5).all()
+    recent_eids = [e.event_id for e in recent_events]
+
+    payout_ids_to_fetch = []
+    for eid in recent_eids:
+        p_ids = db.query(models.Payout.payout_id).filter(models.Payout.event_id == eid).order_by(models.Payout.processed_at.desc()).limit(25).all()
+        payout_ids_to_fetch.extend([p[0] for p in p_ids])
+
+    ungrouped = db.query(models.Payout.payout_id).filter(models.Payout.event_id.is_(None)).order_by(models.Payout.processed_at.desc()).limit(25).all()
+    payout_ids_to_fetch.extend([p[0] for p in ungrouped])
+
+    if not payout_ids_to_fetch:
+        payout_ids_to_fetch = [p[0] for p in db.query(models.Payout.payout_id).order_by(models.Payout.processed_at.desc()).limit(limit).all()]
+
+    if not payout_ids_to_fetch:
+        return {"payouts": [], "event_meta": {}}
+
     rows = (
         db.query(
             models.Payout,
@@ -330,8 +348,8 @@ def get_live_payouts(limit: int = 100, db: Session = Depends(get_db)):
         .join(models.Policy,      models.Payout.policy_id  == models.Policy.policy_id)
         .join(models.RiderProfile, models.Policy.profile_id == models.RiderProfile.profile_id)
         .outerjoin(models.TriggerEvent, models.Payout.event_id == models.TriggerEvent.event_id)
+        .filter(models.Payout.payout_id.in_(payout_ids_to_fetch))
         .order_by(models.Payout.processed_at.desc())
-        .limit(limit)
         .all()
     )
 
@@ -368,7 +386,58 @@ def get_live_payouts(limit: int = 100, db: Session = Depends(get_db)):
             "metric_type":  event.metric_type if event else "—",
             "coverage_pct": round(float(policy.coverage_ratio) * 100, 1),
         })
-    return {"payouts": result}
+
+    event_ids = list({r["event_id"] for r in result if r["event_id"]})
+    event_meta = {}
+    if event_ids:
+        meta_rows = (
+            db.query(
+                models.Payout.event_id,
+                func.sum(models.Payout.amount).label("total_amount"),
+                func.count(models.Payout.payout_id).label("total_count"),
+                func.sum(case((models.RiderProfile.platform == "mock_simulator", 1), else_=0)).label("mock_count"),
+                func.sum(case((models.RiderProfile.platform != "mock_simulator", 1), else_=0)).label("real_count"),
+                func.min(models.TriggerEvent.started_at).label("started_at")
+            )
+            .join(models.Policy, models.Payout.policy_id == models.Policy.policy_id)
+            .join(models.RiderProfile, models.Policy.profile_id == models.RiderProfile.profile_id)
+            .join(models.TriggerEvent, models.Payout.event_id == models.TriggerEvent.event_id)
+            .filter(models.Payout.event_id.in_(event_ids))
+            .group_by(models.Payout.event_id)
+            .all()
+        )
+        for row in meta_rows:
+            event_meta[str(row.event_id)] = {
+                "total_amount": float(row.total_amount or 0),
+                "total_count": row.total_count,
+                "mock_count": row.mock_count,
+                "real_count": row.real_count,
+                "started_at": row.started_at.isoformat() if row.started_at else None,
+                "total_fraud": 0 # placeholder
+            }
+
+        # Add fraud block counts per event
+        fraud_stats = db.query(
+            models.FraudCheckLog.event_id,
+            func.count(models.FraudCheckLog.check_id)
+        ).filter(
+            models.FraudCheckLog.event_id.in_(event_ids),
+            models.FraudCheckLog.result == "BLOCK"
+        ).group_by(models.FraudCheckLog.event_id).all()
+
+        for eid, fcount in fraud_stats:
+            if str(eid) in event_meta:
+                event_meta[str(eid)]["total_fraud"] = fcount
+
+    system_premium = db.query(func.sum(models.Policy.premium_amount)).scalar() or 0.0
+    system_fraud   = db.query(func.count(models.FraudCheckLog.check_id)).filter(models.FraudCheckLog.result == "BLOCK").scalar() or 0
+
+    return {
+        "payouts": result,
+        "event_meta": event_meta,
+        "system_premium": float(system_premium),
+        "system_fraud": system_fraud
+    }
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -376,7 +445,7 @@ def get_live_payouts(limit: int = 100, db: Session = Depends(get_db)):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/admin/ml-models")
-def get_ml_models():
+def get_ml_models(_admin: str = Depends(verify_admin_key)):
     """Returns ML model metadata — type, features, importance, training stats."""
     from ..ml_engine import get_model_metadata
     return {"models": get_model_metadata()}
@@ -387,7 +456,7 @@ def get_ml_models():
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/admin/fraud-log")
-def get_fraud_log(db: Session = Depends(get_db)):
+def get_fraud_log(db: Session = Depends(get_db), _admin: str = Depends(verify_admin_key)):
     """Last 30 fraud checks with full feature breakdowns for admin visibility."""
     rows = (
         db.query(models.FraudCheckLog, models.RiderProfile)
@@ -431,7 +500,7 @@ def get_fraud_log(db: Session = Depends(get_db)):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/admin/zones")
-def get_admin_zones(db: Session = Depends(get_db)):
+def get_admin_zones(db: Session = Depends(get_db), _admin: str = Depends(verify_admin_key)):
     """City → zones map for simulator target dropdowns."""
     cities = db.query(models.CityBenchmark).all()
     out    = {}
@@ -456,7 +525,7 @@ def get_admin_zones(db: Session = Depends(get_db)):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/admin/map")
-def get_admin_map(db: Session = Depends(get_db)):
+def get_admin_map(db: Session = Depends(get_db), _admin: str = Depends(verify_admin_key)):
     """
     Returns geo data for Command Map: zone clusters + active events.
     Returns aggregate rider/policy counts per zone — NOT individual 8k row list.
@@ -507,7 +576,7 @@ def get_admin_map(db: Session = Depends(get_db)):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/admin/notifications")
-def get_admin_notifications(db: Session = Depends(get_db)):
+def get_admin_notifications(db: Session = Depends(get_db), _admin: str = Depends(verify_admin_key)):
     """Returns the last 20 completed (inactive) disruptions for the notification bell."""
     events = (
         db.query(models.TriggerEvent)
@@ -547,14 +616,14 @@ def get_admin_notifications(db: Session = Depends(get_db)):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/admin/generate-riders/status")
-def get_generate_status():
+def get_generate_status(_admin: str = Depends(verify_admin_key)):
     """Poll this to track progress of the background rider generation job."""
     with _gen_lock:
         return dict(_gen_state)
 
 
 @router.post("/admin/generate-riders")
-def generate_riders(background_tasks: BackgroundTasks, target_users: int = 8000):
+def generate_riders(background_tasks: BackgroundTasks, target_users: int = 8000, _admin: str = Depends(verify_admin_key)):
     """
     Kicks off 8k rider generation as a background task.
     Returns immediately — poll /admin/generate-riders/status for progress.
@@ -598,7 +667,8 @@ def _generate_riders_bg(target_users: int):
     import bcrypt
     db = SessionLocal()
     try:
-        # ── STEP 1: Clear old mock riders safely in chunks ─────────────────
+        # Clear old mock riders in 500-row chunks to avoid ORM in-memory overload
+        # on large datasets. Real riders (platform != 'mock_simulator') are untouched.
         _update_gen(5, "Clearing previous simulation data...")
         chunk_size = 500
         deleted = 0
@@ -639,9 +709,21 @@ def _generate_riders_bg(target_users: int):
             db.commit()
             deleted += len(ids)
         logger.info(f"[GENERATE] Cleared {deleted} old mock riders.")
+        _update_gen(12, "Clearing previous trigger events and payouts...")
+
+        # Wipe all trigger events, payouts, and fraud logs so the Live Execution
+        # Feed, fraud analytics, and KPI cards reflect only the current generation.
+        # Real-rider payouts are also cleared because they are tied to trigger
+        # events that are no longer valid after a full regeneration.
+        db.query(models.FraudCheckLog).delete(synchronize_session=False)
+        db.query(models.Payout).delete(synchronize_session=False)
+        db.query(models.TriggerEvent).delete(synchronize_session=False)
+        db.commit()
+        logger.info("[GENERATE] Cleared all trigger events, payouts, and fraud logs.")
+
         _update_gen(15, f"Cleared {deleted} old records. Building {target_users} riders...")
 
-        # ── STEP 2: Load zones ─────────────────────────────────────────────
+        # Load zones for distribution, crash-fast if init_db hasn't run.
         zones = db.query(models.GeoZone).all()
         if not zones:
             raise RuntimeError("No geo zones found in database — run init_db first.")
@@ -651,74 +733,126 @@ def _generate_riders_bg(target_users: int):
         now                 = datetime.now(timezone.utc)
         total_active_target = random.randint(5500, 5900)
 
+        # Pre-load city benchmarks keyed by city_id for O(1) lookup inside the
+        # 8k-rider loop — eliminates 8000 individual DB round-trips.
+        city_map: dict = {c.city_id: c for c in db.query(models.CityBenchmark).all()}
+
+        # Two shifts cover morning and extended evening. Riders 0-3199 get Shift A
+        # (08:00-12:00); the remainder get Shift B (12:00-02:00, night delivery heavy).
+        SHIFT_A = {"pref": 0, "start": "08:00", "end": "12:00", "hours": 4.0}
+        SHIFT_B = {"pref": 1, "start": "12:00", "end": "02:00", "hours": 14.0}
+
         new_riders   = []
         new_rzones   = []
         new_policies = []
         new_activity = []
 
         for i in range(target_users):
-            zone           = random.choice(zones)
+            zone            = random.choice(zones)
+            city_bench      = city_map.get(zone.city_id)
+            base_income     = float(city_bench.baseline_weekly_income) if city_bench else 5500.0
+            zone_risk       = float(zone.base_risk_multiplier)
             is_active_batch = i < total_active_target
 
+            # ── Rider profile tier ────────────────────────────────────────────
+            # Active riders: experienced, high hours → ML predicts high TU/DE/CR
+            # Fraud seeds : low experience, low hours → ML predicts low TU/DE/CR
+            shift = SHIFT_A if i < 3200 else SHIFT_B
             if is_active_batch:
-                # Reliable rider profile
-                tu      = random.uniform(0.6, 0.98)
-                de      = random.uniform(0.6, 0.98)
-                cr      = random.uniform(0.7, 0.99)
-                r_score = min(((tu * de * cr) ** 0.5), 1.0)
-                policy_status = "ACTIVE"
+                experience_months = random.randint(6, 48)
+                avg_daily_hours   = random.uniform(7.0, 14.0)
+                weather_severity  = random.uniform(0.0, 0.5)   # mostly clear days
+                policy_status     = "ACTIVE"
             else:
-                # Low-reliability / fraud seed
-                tu      = random.uniform(0.1, 0.5)
-                de      = random.uniform(0.1, 0.5)
-                cr      = random.uniform(0.1, 0.5)
-                r_score = min(((tu * de * cr) ** 0.5), 1.0)
-                policy_status = random.choice(["PENDING", "EXPIRED", "ACTIVE"])
+                experience_months = random.randint(1, 8)
+                avg_daily_hours   = random.uniform(2.0, 6.0)
+                weather_severity  = random.uniform(0.4, 1.0)   # bad conditions
+                policy_status     = random.choice(["PENDING", "EXPIRED", "ACTIVE"])
+
+            # ── ML-predicted metrics (same MLP used for real riders) ───────────
+            # predict_rider_metrics calls the trained vero_nn_metrics.pkl.
+            # Falls back to heuristics if pkl is unavailable — never crashes.
+            pred_tu, pred_de, pred_cr = predict_rider_metrics(
+                shift_preference  = shift["pref"],
+                zone_risk_index   = zone_risk,
+                avg_daily_hours   = avg_daily_hours,
+                experience_months = experience_months,
+                weather_severity  = weather_severity,
+            )
+            r_score = round(min((pred_tu * pred_de * pred_cr) ** 0.5, 1.0), 4)
+
+            # ── Premium via the exact VERO formula (mirrors insurance_logic.py) ─
+            # base_rate  = city baseline weekly income × 2%
+            # premium    = base_rate × zone_risk × (1.5 - R)
+            # High-R riders pay less; high-risk zones pay more.
+            # ±3% jitter models week-to-week forecast variation.
+            base_rate      = base_income * 0.02
+            jitter         = random.uniform(0.97, 1.03)
+            premium        = round(base_rate * zone_risk * (1.5 - r_score) * jitter, 2)
+            coverage_ratio = round(min(0.40 + 0.25 * r_score, 0.65), 2)
 
             pr_id = uuid.uuid4()
 
+            # ── Fraud seed: set financial history so Isolation Forest fires ───
+            # Normal riders: loss_ratio 0.5–1.2× (within actuarial target)
+            # Fraudsters   : loss_ratio 3–8×  (draining the pool)
+            if not is_active_batch:
+                total_premium_paid     = round(premium, 2)
+                total_payouts_received = round(random.uniform(3.0, 8.0) * premium, 2)
+            else:
+                total_premium_paid     = round(premium, 2)
+                total_payouts_received = round(random.uniform(0.0, 1.2) * premium, 2)
+
             new_riders.append(models.RiderProfile(
-                profile_id=pr_id,
-                full_name=f"Rider_{i:05d}",
-                phone_number=f"+9199{str(i).zfill(8)}",
-                hashed_password=mock_hash,
-                platform="mock_simulator",
-                city_id=zone.city_id,
-                shift_hours={"start": "06:00", "end": "23:00"},
-                upi_id=f"sim{i}@vero",
-                reliability_score=round(r_score, 2),
-                is_verified=True,
-                total_payouts_received=0.0,
-                total_premium_paid=0.0,
-                created_at=now,
+                profile_id             = pr_id,
+                full_name              = f"Rider_{i:05d}",
+                phone_number           = f"+9199{str(i).zfill(8)}",
+                hashed_password        = mock_hash,
+                platform               = "mock_simulator",
+                city_id                = zone.city_id,
+                shift_hours            = {"start": shift["start"], "end": shift["end"]},
+                upi_id                 = f"sim{i}@vero",
+                reliability_score      = round(r_score, 2),
+                is_verified            = True,
+                total_payouts_received = total_payouts_received,
+                total_premium_paid     = total_premium_paid,
+                created_at             = now,
             ))
 
             new_rzones.append(models.RiderZone(
-                profile_id=pr_id, zone_id=zone.zone_id, is_primary=True
+                profile_id = pr_id,
+                zone_id    = zone.zone_id,
+                is_primary = True,
             ))
 
             activation_buffer = timedelta(seconds=random.randint(30, 300))
             new_policies.append(models.Policy(
-                policy_id=uuid.uuid4(),
-                profile_id=pr_id,
-                premium_amount=round(random.uniform(10.0, 45.0), 2),
-                coverage_ratio=round(0.40 + 0.25 * r_score, 2),
-                r_factor_at_purchase=round(r_score, 4),
-                status=policy_status,
-                purchased_at=now - timedelta(hours=random.randint(24, 72)),
-                activated_at=(now - activation_buffer) if policy_status == "ACTIVE" else (now + timedelta(hours=1)),
-                expires_at=now + timedelta(days=7),
-                is_surcharge_applied=False,
+                policy_id            = uuid.uuid4(),
+                profile_id           = pr_id,
+                premium_amount       = premium,
+                coverage_ratio       = coverage_ratio,
+                r_factor_at_purchase = r_score,
+                status               = policy_status,
+                # purchased_at floor at 48h so policy_age_hours always lands
+                # inside the Isolation Forest's normal training range (48–2000h)
+                # and legitimate riders are never false-positive blocked.
+                purchased_at         = now - timedelta(hours=random.randint(48, 120)),
+                activated_at         = (now - activation_buffer) if policy_status == "ACTIVE" else (now + timedelta(hours=1)),
+                expires_at           = now + timedelta(days=7),
+                is_surcharge_applied = False,
             ))
 
-            # Activity logs — reliable riders log in-zone, fraud riders log wrong-zone
-            if policy_status == "ACTIVE" and is_active_batch:
+            # ── Activity logs — zone-aware telemetry ──────────────────────────
+            # Normal riders : recent in-zone pings (low recency, high zone match)
+            # Fraudsters    : stale pings in wrong zone (high recency, low zone match)
+            # Both patterns feed directly into the Isolation Forest features.
+            if is_active_batch and policy_status == "ACTIVE":
                 for _ in range(random.randint(2, 5)):
                     new_activity.append(models.RiderActivityLog(
-                        profile_id=pr_id,
-                        activity_type="delivery",
-                        zone_id=zone.zone_id,
-                        recorded_at=now - timedelta(minutes=random.randint(5, 90)),
+                        profile_id    = pr_id,
+                        activity_type = "delivery",
+                        zone_id       = zone.zone_id,
+                        recorded_at   = now - timedelta(minutes=random.randint(5, 90)),
                     ))
             elif not is_active_batch:
                 wrong_zone = random.choice(
@@ -726,10 +860,10 @@ def _generate_riders_bg(target_users: int):
                 )
                 for _ in range(random.randint(1, 3)):
                     new_activity.append(models.RiderActivityLog(
-                        profile_id=pr_id,
-                        activity_type="delivery",
-                        zone_id=wrong_zone.zone_id,
-                        recorded_at=now - timedelta(minutes=random.randint(120, 1440)),
+                        profile_id    = pr_id,
+                        activity_type = "delivery",
+                        zone_id       = wrong_zone.zone_id,
+                        recorded_at   = now - timedelta(minutes=random.randint(120, 1440)),
                     ))
 
             # Update progress during build (15→60 range)

@@ -13,6 +13,7 @@ export const verifyOtp  = (phone_number, otp_code)=> api.post("/auth/otp/verify"
 export const register   = (data)                  => api.post("/auth/register",    data)
 export const getZonesByCity = (city)               => api.get(`/auth/zones?city=${city}`)
 export const login      = (data)                  => api.post("/auth/login",       data)
+export const verifyUpi  = (upi_id)                => api.post("/auth/upi/verify",  { upi_id })
 export const getQuote   = ()                      => api.get("/policies/quote")
 export const purchasePolicy = ()                  => api.post("/policies/purchase")
 export const createRazorpayOrder = ()             => api.post("/policies/create-order")

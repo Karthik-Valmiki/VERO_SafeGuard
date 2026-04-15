@@ -8,9 +8,10 @@ export default function FraudTab() {
 
   const fetchData = async () => {
     try {
+      const adminH = { "X-Admin-Key": import.meta.env.VITE_ADMIN_API_KEY || "vero_admin_key_2026" }
       const [logs, models] = await Promise.all([
-        fetch("/api/dashboards/admin/fraud-log").then(r => r.json()),
-        fetch("/api/dashboards/admin/ml-models").then(r => r.json())
+        fetch("/api/dashboards/admin/fraud-log", { headers: adminH }).then(r => r.json()),
+        fetch("/api/dashboards/admin/ml-models", { headers: adminH }).then(r => r.json())
       ])
       setLogData(logs)
       setModelsData(models.models)

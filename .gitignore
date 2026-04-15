@@ -34,6 +34,8 @@ yarn-error.log*
 .stylelintcache
 frontend/dist/
 frontend/build/
+admin-dashboard/dist/
+admin-dashboard/build/
 
 # IDEs
 .vscode/
@@ -41,7 +43,9 @@ frontend/build/
 *.swp
 *.swo
 
-# Environment variables — .env.example is safe to commit, .env is not
+# Environment variables
+# .env is git-ignored — credentials must never be committed
+# .env.example is safe to commit — it contains no real secrets
 .env
 !.env.example
 .env.local
@@ -50,7 +54,6 @@ frontend/build/
 .env.production.local
 
 # Docker
-.dockerignore
 docker-compose.override.yml
 
 # OS files
@@ -60,3 +63,7 @@ Thumbs.db
 # Project specific
 backend/app/db/*.db
 backend/app/db/*.sqlite
+
+# Pre-trained ML models are committed intentionally so cloners get them immediately.
+# Do NOT add *.pkl to this file.
+# To retrain: python backend/scripts/train_models.py

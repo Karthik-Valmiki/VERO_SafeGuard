@@ -1,258 +1,365 @@
-# VERO — Visual Guide
-### Parametric Income Protection for India's Food Delivery Workers
-> Theme: **Protect the Worker**
+# VERO SafeGuard — Visual Guide
+
+Parametric income protection for India's food delivery workers.
+This guide is for anyone who has just cloned the repo and wants to understand what they are looking at, how to run it, and how to demo it end-to-end.
 
 ---
 
-## Pages at a Glance
+## What VERO Does
+
+Food delivery riders on Zomato and Swiggy lose income every time something outside their control hits — a hailstorm, a toxic AQI day, a platform outage, a city bandh. No existing system compensates for this.
+
+VERO monitors four disruption types in real time using independent third-party data. When a disruption is confirmed, money goes directly to the rider's UPI wallet in 30-minute intervals. No claim form. No call. No waiting. The rider does nothing — VERO does everything automatically.
+
+---
+
+## Quick Start
+
+### Prerequisites
+- Docker Desktop installed and running
+- Git
+
+### Steps
+
+```bash
+git clone <repo-url>
+cd VERO_SafeGuard
+docker compose up --build
+```
+
+That is it. Docker handles everything — PostgreSQL, the FastAPI backend, the rider PWA, and the admin dashboard. No manual database setup, no pip install, no npm install.
+
+**First run takes 2–3 minutes** while Docker builds the images. Subsequent runs are fast.
+
+### What opens
+
+| URL | What it is |
+|---|---|
+| http://localhost | Rider PWA (mobile-first) |
+| http://localhost:8080 | Admin Command Center |
+| http://localhost:8000/docs | Backend API docs (Swagger) |
+
+### To stop
+
+```bash
+docker compose down
+```
+
+To wipe the database and start completely fresh:
+
+```bash
+docker compose down -v
+docker compose up --build
+```
+
+---
+
+## Credentials
+
+### Rider App (http://localhost)
+
+Five demo riders are pre-seeded with weeks of delivery history. Log in with any of them to see different premium amounts and coverage percentages — the difference is the ML engine reading each rider's history.
+
+| Name | Phone | Password | City | Profile |
+|---|---|---|---|---|
+| Arjun Mehta | +919000000001 | vero1234 | Mumbai | High performer — lowest premium, 65% coverage |
+| Priya Nair | +919000000002 | vero1234 | Bengaluru | Average performer |
+| Ravi Kumar | +919000000003 | vero1234 | Delhi | Low performer — highest premium, 40% coverage |
+| Deepa Krishnan | +919000000004 | vero1234 | Chennai | Mid-high performer |
+| Suresh Babu | +919000000005 | vero1234 | Hyderabad | Recovering performer |
+
+### Admin Dashboard (http://localhost:8080)
+
+| Field | Value |
+|---|---|
+| Email | admin@vero |
+| Password | admin1234 |
+
+---
+
+## Environment Variables
+
+The `.env` file at the project root is loaded automatically by Docker Compose. It is already configured with working defaults — **you do not need to edit anything to run the demo**.
+
+The `.env` file is git-ignored so it will not be committed. The `.env.example` file shows the structure. If you clone the repo and the `.env` file is missing, copy the example:
+
+```bash
+cp .env.example .env
+```
+
+The defaults in `.env.example` work out of the box for local Docker runs. Razorpay keys are optional — if not set, the app falls back to a direct purchase flow that works without payment processing.
+
+---
+
+## ML Models
+
+Two pre-trained `.pkl` files are committed to the repo at `backend/app/models/`:
+
+- `vero_nn_metrics.pkl` — MLPRegressor that predicts rider performance metrics (TU, DE, CR) from lifestyle features. Output feeds the R-score formula that drives premium and coverage.
+- `vero_fraud_iforest.pkl` — IsolationForest trained on 75k synthetic rows with 6 features. Runs on every payout eligibility check to detect GPS spoofing, ghost riders, and coordinated fraud rings.
+
+These are loaded at backend startup. No training step is needed. If you want to retrain from scratch:
+
+```bash
+cd backend
+python scripts/train_models.py
+```
+
+This regenerates both `.pkl` files in `backend/app/models/`. The training script is fully documented with the synthetic data design rationale.
+
+---
+
+## Application Pages
+
+### Rider App
 
 | Page | What it shows |
 |---|---|
 | Landing | Product overview, what is covered, how it works, sign-up CTA |
-| Register | 3-step flow: phone → OTP → details |
-| Login | Phone + password, straight to dashboard |
-| Dashboard | Greeting, R-score, tenure, policy status, risk forecast, quick actions |
-| Policy | Coverage status, Dynamic premium, cap usage bar, what is covered, how payouts work |
-| Payment | Quote confirmation, UPI payment simulation, activation countdown |
-| Claims | Payout history, summary stats, zero-touch claims explainer |
-| Simulator | Fire triggers, see mock API responses, watch payouts generate |
-| Profile | Tier badge, score breakdown, financial summary, account details |
+| Register | 3-step: phone → OTP → details. OTP appears as a toast in demo mode |
+| Login | Phone + password |
+| Dashboard | Greeting, R-score, tenure, policy status, zone risk forecast, quick actions |
+| Policy | Coverage status, premium, cap usage bar, what is covered, how payouts work |
+| Payment | Quote confirmation, Razorpay UPI simulation, 20-second activation countdown |
+| Claims | Payout history with filter, summary stats, zero-touch claims explainer |
+| Profile | Tier badge, score breakdown, financial summary |
 | Notifications | Payout alerts and disruption notifications |
+| Simulator | Fire triggers from the rider app, watch payouts arrive in Claims |
 
----
+### Admin Dashboard
 
-
-## What This Product Does
-
-India's food delivery riders lose income every time something outside their control hits — a hailstorm, a toxic AQI day, a platform outage, a city bandh. There is no existing system that compensates for this. VERO fixes that.
-
-When a disruption is confirmed through independent third-party data, money goes directly to the rider's UPI wallet in 30-minute intervals. No claim form. No call. No waiting. The rider does nothing — VERO does everything.
-
----
-
-## How to Run
-
-Make sure Docker Desktop is running, then from the project root:
-
-```
-start-and-open.bat
-```
-
-This builds and starts all three services (PostgreSQL, backend, frontend) and opens the app at `http://localhost`. The backend API docs are at `http://localhost:8000/docs`.
-
-To stop everything:
-
-```
-stop.bat
-```
-
-On first run, the backend automatically seeds the database with cities, zones, and five demo riders before starting the server. No manual setup needed.
-
----
-
-## Demo Login Credentials
-
-For the demo, use any of these pre-seeded returning riders. These accounts already have weeks of delivery history in the database, which is what drives the ML-based premium and coverage differences you will see between them.
-
-| Name | Phone | Password | City | Platform | Profile |
-|---|---|---|---|---|---|
-| Arjun Mehta | +919000000001 | vero1234 | Mumbai | Zomato | High performer |
-| Priya Nair | +919000000002 | vero1234 | Bengaluru | Swiggy | Average performer |
-| Ravi Kumar | +919000000003 | vero1234 | Delhi | Zomato | Low performer |
-| Deepa Krishnan | +919000000004 | vero1234 | Chennai | Swiggy | Mid-high performer |
-| Suresh Babu | +919000000005 | vero1234 | Hyderabad | Zomato | Recovering performer |
-
-Log in with any of these and you will immediately see different premium amounts and coverage percentages — that difference is the ML engine at work.
-
----
-
-## Full Workflow
-
-### New User Path
-
-A brand new rider has no delivery history. The system handles this by:
-
-- Using city-level baseline income as the earnings reference
-- Applying a city-level default risk multiplier (Delhi is highest at 1.30×, other cities lower)
-- Fixing coverage at 40% — enough to be meaningful, not enough to make joining right before a bad week profitable
-- Enforcing a 24-hour activation window — a rider who reads tonight's bandh announcement and buys immediately cannot claim against it tomorrow
-
-The new user flow in the app is three steps:
-
-**Step 1 — Phone**
-Enter a 10-digit number. The system sends a 6-digit OTP. In demo mode, the OTP appears as a floating toast notification on screen so you do not need a real SMS.
-
-**Step 2 — Verify**
-Enter the OTP. Once verified, the phone number is confirmed.
-
-**Step 3 — Details**
-Fill in name, password, UPI ID, platform (Zomato or Swiggy), city, and shift hours. Submit — account is created and the rider lands on the dashboard.
-
----
-
-### Returning User Path (Demo Focus)
-
-From week 3 onward, the system has enough delivery data to personalise everything. This is where the ML engine takes over.
-
-The backend tracks three dimensions of each rider's delivery behaviour across weeks:
-
-- **Availability** — how many hours they were active relative to their zone peers
-- **Efficiency** — how many orders they completed relative to their zone peers
-- **Completion rate** — what fraction of accepted orders they actually delivered
-
-These three signals are fed into the ML model, which produces a single score between 0 and 1. That score directly controls two things: how much the rider pays, and how much they are covered for.
-
-**The outcome:**
-- A high-scoring rider (consistent, efficient, high completion) pays a lower premium and gets higher coverage — up to 65%
-- A low-scoring rider pays more and gets less — floor is 40% coverage
-- The difference between the best and worst rider in the demo is visible the moment you log in
-
-This is not a flat discount. The ML model recalculates every week based on fresh data. A rider who improves their behaviour moves up. A rider who becomes inconsistent moves down.
-
-**Profile page** shows the score breakdown visually — three mini progress bars for Availability, Efficiency, and Completion, plus a circular gauge for the overall score. Riders are also assigned a tier (Bronze → Silver → Gold → Elite) based on their score, with the benefits of each tier shown clearly.
+| Tab | What it shows |
+|---|---|
+| Overview | KPI cards, system integrity, active disruptions, live execution feed |
+| Trigger Simulator | Fire any of the 7 trigger types against any zone |
+| Analytics | Premium vs payout by city, 7-day payout trend, zone risk actuarial table |
+| Fraud Intelligence | ML model explainability, live anomaly telemetry with per-feature breakdown |
+| Command Map | Leaflet map with zone risk halos, rider density dots, live disruption overlays |
 
 ---
 
 ## The Four Triggers
 
-VERO monitors four types of disruption simultaneously. Each one uses a specific independent data source — the rider cannot influence any of them.
+VERO monitors four disruption types simultaneously. Each uses an independent data source the rider cannot influence.
 
-### 1. Heavy Rain / Hailstorm / Extreme Heat
+### 1. Weather (Rain / Hailstorm / Extreme Heat)
 Source: OpenWeatherMap + Tomorrow.io
 
-- Heavy rain fires when rainfall exceeds 35mm/hr sustained for at least 1 hour
-- Hailstorm fires immediately on confirmation — no duration requirement, riding in hail is immediately dangerous
-- Extreme heat fires when temperature exceeds 40°C sustained for 2 hours
+- Heavy rain: rainfall > 35mm/hr sustained for 1 hour
+- Hailstorm: confirmed alert — fires immediately, no duration requirement
+- Extreme heat: temperature > 40°C sustained for 2 hours
 
 ### 2. Toxic Air (AQI)
 Source: IQAir / CPCB government sensor network
 
-Fires when AQI exceeds 300 in the rider's active zone, sustained for more than 2 hours during their shift. This is the Delhi winter scenario — hazardous air that cuts trip completion rates significantly.
+AQI > 300 in the rider's active zone, sustained for 2+ hours during their shift.
 
 ### 3. Platform Outage (Zomato / Swiggy — monitored separately)
 Source: DownDetector + custom uptime scraper
 
-Fires when a platform is down for more than 45 continuous minutes AND the outage falls within peak hours (12:00–14:30 or 19:00–22:30). Off-peak outages do not trigger — a 3am outage does not affect earnings. Zomato and Swiggy are monitored independently.
+Platform down for 45+ continuous minutes AND within peak hours (12:00–14:30 or 19:00–22:30). Off-peak outages do not trigger.
 
 ### 4. Bandh / Civic Shutdown
 Source: NewsAPI.org + Twitter/X trending signals
 
-This one is proactive. The system reads signals the night before — government notices, news articles, trending hashtags — and scores them into a confidence percentage. When confidence crosses 75% AND restaurant availability in the zone drops above 80% AND the rider's GPS confirms they are in the affected zone, payouts begin. The rider is notified the night before, not after they have already lost the income.
+Proactive — the system reads signals the night before. Oracle confidence > 75% AND restaurant availability drop > 80% AND rider GPS in zone → payouts begin. Rider is notified before the disruption day, not after income is already lost.
 
-**Multi-trigger rule:** If two triggers are active at the same time for the same rider, only the one producing the highest payout fires. Payouts are never stacked.
+**Multi-trigger rule:** If two triggers are active simultaneously for the same rider, only the one producing the highest payout fires. Payouts are never stacked.
 
 ---
 
-## Payout Logic
-
-Every 30 minutes while a disruption is active:
+## Payout Formula
 
 ```
-Payout per interval = 0.5 hours × Verified Hourly Income × Coverage %
+Per-interval payout = 0.5 hours × Verified Hourly Income × Coverage %
+
+Coverage % = 40% fixed (weeks 1–2)
+           = 40% + (25% × R-score), max 65% (week 3+)
+
+Weekly cap = Coverage % × Verified Weekly Income
 ```
 
-- Verified hourly income comes from city baseline for new users, or from the rider's own verified earnings from week 3 onward
-- Coverage % is 40% fixed for new users, or 40–65% based on the ML score for returning users
-- A weekly cap applies — Coverage % × Verified Weekly Income. Once the cap is exhausted, payouts stop for that week
-- An SMS is sent at the first interval with a trigger event ID. Subsequent intervals within the same event are processed silently
+Payouts fire every 30 minutes while the disruption is active. The weekly cap is enforced — once exhausted, payouts stop for that week.
 
 ---
 
-## Registration Process (What the Evaluator Sees)
+## ML Engine
 
-1. Open `http://localhost`
-2. Tap "Get covered — ₹50/week" or "Create free account"
-3. Enter a phone number → OTP appears as a toast → enter it → verify
-4. Fill in name, password, UPI ID, platform, city, shift hours → submit
-5. Land on dashboard — quote is shown immediately with premium and coverage for the coming week
+### Premium and Coverage (MLPRegressor)
 
----
+Every time a returning rider's quote is requested, the backend:
 
-## Insurance Policy Management (What the Evaluator Sees)
+1. Infers lifestyle features from the rider's profile (shift hours, experience, zone risk)
+2. Passes them through the trained MLP to predict TU, DE, CR
+3. Computes R = min(√(TU × DE × CR), 1.0)
+4. Applies: `Premium = base_rate × zone_risk × (1.5 − R)`
+5. Applies: `Coverage = 40% + 25% × R`, capped at 65%
 
-1. Log in with any demo account
-2. Dashboard shows current policy status — coverage %, premium paid, weekly cap, cap used so far
-3. Navigate to "My Policy" for full details — what is covered, how payouts work, policy metadata
-4. If no policy is active, the quote is shown with a single "Activate Protection" button
-5. Payment screen shows the premium, coverage %, and weekly cap — tap to activate
-6. In demo mode, the policy activates in 20 seconds (production enforces a 24-hour window)
+A rider with R = 1.0 pays 0.5× base rate and gets 65% coverage.
+A rider with R = 0.0 pays 1.5× base rate and gets 40% coverage.
 
----
+### Fraud Detection (IsolationForest — 6 features)
 
-## Dynamic Premium Calculation (What the Evaluator Sees)
+Runs on every payout eligibility check in `payout_engine.py`:
 
-Log in with different demo accounts and compare the numbers on the dashboard and payment screen:
+| Feature | Normal range | Fraud range |
+|---|---|---|
+| zone_match_ratio | 0.6 – 1.0 | 0.0 – 0.3 |
+| activity_recency_min | 1 – 60 min | 120 – 300 min |
+| loss_ratio | 0.5 – 1.5× | 3 – 8× |
+| policy_age_hours | 48 – 2000h | 1 – 12h |
+| claims_anomaly_ratio | 0.8 – 1.5× | 3 – 6× |
+| ping_burst_score | 0 – 3 pings | 10 – 30 pings |
 
-- Arjun Mehta (Mumbai, high performer) — lowest premium, highest coverage
-- Ravi Kumar (Delhi, low performer) — highest premium, lowest coverage
-- Priya Nair (Bengaluru, average) — mid-range on both
-
-The difference is entirely driven by the ML model reading each rider's delivery history. Same city, same platform, same week — different price, different coverage. That is the personalisation working.
-
-The dashboard also shows a "Next Week Risk Forecast" card — a risk bar that reflects the zone's environmental, AQI, and social disruption forecast for the coming week. High-risk weeks push the base rate up for everyone in that zone.
+New riders with zero prior payouts receive `claims_anomaly_ratio = 1.0` (neutral midpoint) so they are not false-positive blocked.
 
 ---
 
-## Claims Management (What the Evaluator Sees)
+## Demo Walkthrough
 
-1. Log in with a demo account that has an active policy
-2. Navigate to "Claims & Payouts"
-3. Summary cards show total received, number of payouts, and remaining cap
-4. Payout history lists each transaction with trigger type, timestamp, amount, and status
-5. To generate a payout, go to the Trigger Simulator
+### Step 1 — Show the ML premium difference
 
----
+1. Log in as Arjun Mehta (+919000000001) → note premium and coverage %
+2. Log out, log in as Ravi Kumar (+919000000003) → compare
+3. Same city (different), same week, same platform — different price, different coverage
+4. The difference is the ML model reading each rider's delivery history
 
-## Trigger Simulator
+### Step 2 — Generate 8,000 riders
 
-The simulator is the demo tool for showing the automated trigger and payout system live. Access it from the dashboard via the "Simulate" button (yellow, top right).
+1. Open Admin Dashboard → http://localhost:8080
+2. Click "Generate 8k Riders" in the sidebar
+3. Watch the progress modal — it shows each phase: clearing, building, inserting
+4. When done: ~5,700 active policies, ~2,300 fraud/inactive seeds, ~25,000 activity logs
+5. The Command Map updates automatically — zone circles fill with rider density dots
 
-**How to use it:**
+### Step 3 — Fire a trigger
 
-1. Confirm the Zone ID (pre-filled from your registered zone)
-2. Select a trigger type from the dropdown — Heavy Rain, Hailstorm, Extreme Heat, Toxic Air, Zomato Outage, Swiggy Outage, or Bandh
-3. Enter a threshold value above the minimum (the UI shows green/red feedback in real time)
-4. Set a start and end time for the disruption window
-5. Optionally add up to 3 triggers to fire simultaneously — the multi-trigger resolution rule will show which one wins
-6. Tap "Fire Trigger"
+1. Admin Dashboard → Trigger Simulator tab
+2. Select a city and zone (Mumbai / Bandra is highest risk at 1.30×)
+3. Select "Heavy Rain", set threshold to 60mm/hr, set a 2-hour window
+4. Click "Fire Disruption Trigger"
+5. Result card shows: riders evaluated, payouts queued, fraud skipped, interval count, estimated payout
 
-**What happens:**
+### Step 4 — Watch the Live Execution Feed
 
-- The backend calls the mock API for that trigger type (simulating OpenWeatherMap, IQAir, DownDetector, or NewsAPI)
-- The threshold is validated against the trigger rules
-- If passed, a trigger event is created, eligible riders in the zone are identified, and payouts are queued as a background task
-- The result card shows: overlap hours, interval count, estimated payout, and the raw mock API response (source, readings, threshold check)
-- Navigate to Claims & Payouts — the new payout appears in the history
+1. Stay on the Overview tab
+2. The Live Execution Feed updates every 5 seconds
+3. The newest trigger appears at the top, expanded — showing each rider who received a payout
+4. Click any older trigger card to expand its payout history
+5. Real riders show with a violet icon, simulated riders with blue
 
-**For platform outage triggers:** the start time must fall within peak hours (12:00–14:30 or 19:00–22:30) or the trigger will be rejected. This is by design.
+### Step 5 — See fraud detection fire
 
-**For bandh triggers:** confidence must exceed 75% AND restaurant closure must exceed 80%. Zone 1 (Chennai/Adyar) and Zone 6 (Delhi/Connaught Place) have pre-configured social signal data that will pass this threshold.
+1. After generating 8k riders, fire a trigger on a zone with many riders
+2. Go to Fraud Intelligence tab
+3. The anomaly telemetry shows each fraud check with per-feature breakdown
+4. Fraudster riders (wrong zone, stale activity, high loss ratio) show BLOCK in red
+5. Legitimate riders show PASS in green with their anomaly score
 
----
+### Step 6 — Show the rider experience
 
-## What the ML Engine Actually Does
-
-The premium and coverage numbers are not hardcoded per rider. Every time a quote is requested, the backend:
-
-1. Pulls the rider's last 4 weeks of performance history from the database
-2. Computes their score from the three delivery behaviour dimensions
-3. Applies that score to the base rate formula: `Premium = Base Rate × Zone Risk × (1.5 − Score)`
-4. Computes coverage: `Coverage = 40% + (25% × Score)`, capped at 65%
-
-A rider with a score of 1.0 pays 0.5× the base rate and gets 65% coverage.
-A rider with a score of 0.0 pays 1.5× the base rate and gets 40% coverage.
-
-The zone risk multiplier is layered on top — a rider in a historically high-disruption zone pays more regardless of their personal score. From week 5 onward, city-level defaults are replaced by pin-code level zone history specific to the rider's registered delivery zones.
+1. Log in as any demo rider on http://localhost
+2. Go to Claims & Payouts — the payout from Step 3 appears in history
+3. The payout shows trigger type, timestamp, amount, and SUCCESS status
+4. No claim was filed — it arrived automatically
 
 ---
 
-## Fraud Prevention (Built Into the Design)
+## Architecture
 
-- No claim form means nothing to fake — triggers fire from independent data the rider cannot influence
-- 24-hour activation window blocks last-minute purchases before known disruptions
-- Platform outage trigger requires a logged delivery attempt in the last 30 minutes — someone who opened the app purely to collect a payout is ineligible
-- GPS zone matching — rider must be in their registered zone when the disruption fires
-- Personal loss ratio monitor — if total payouts exceed 1.8× total premiums paid, a compounding surcharge applies to the following week's premium
-- Duplicate trigger blocking — the same event ID cannot produce duplicate payouts under the same policy
+```
+Browser (http://localhost)          Browser (http://localhost:8080)
+        │                                       │
+        ▼                                       ▼
+┌───────────────────┐              ┌────────────────────────┐
+│  Rider PWA        │              │  Admin Dashboard       │
+│  React + Vite     │              │  React + Vite          │
+│  Port 80          │              │  Port 8080             │
+└────────┬──────────┘              └───────────┬────────────┘
+         │                                     │
+         └──────────────┬──────────────────────┘
+                        │  /api/*
+                        ▼
+         ┌──────────────────────────────┐
+         │  Backend (FastAPI)           │
+         │  Port 8000                   │
+         │                              │
+         │  ┌────────────────────────┐  │
+         │  │  ML Engine             │  │
+         │  │  vero_nn_metrics.pkl   │  │
+         │  │  vero_fraud_iforest.pkl│  │
+         │  └────────────────────────┘  │
+         └──────────────┬───────────────┘
+                        │
+                        ▼
+         ┌──────────────────────────────┐
+         │  PostgreSQL + Redis          │
+         │  Port 5432 (internal)        │
+         └──────────────────────────────┘
+```
 
+---
 
+## File Structure
+
+```
+VERO_SafeGuard/
+├── backend/
+│   ├── app/
+│   │   ├── core/          config, security (JWT, admin key)
+│   │   ├── db/            SQLAlchemy models, init_db seeder
+│   │   ├── models/        vero_nn_metrics.pkl, vero_fraud_iforest.pkl
+│   │   ├── routers/       auth, policies, triggers, dashboards, tracking
+│   │   ├── schemas/       Pydantic request/response models
+│   │   ├── services/      insurance_logic, payout_engine, trigger_engine, mock_api
+│   │   ├── ml_engine.py   inference layer — loads pkl, exposes predict functions
+│   │   └── main.py        FastAPI app, startup seeding, CORS
+│   ├── scripts/
+│   │   └── train_models.py  offline training script (not run by Docker)
+│   ├── Dockerfile
+│   └── requirements.txt
+├── frontend/              Rider PWA (React + Tailwind)
+├── admin-dashboard/       Admin Command Center (React + Tailwind)
+├── docker-compose.yml
+├── .env                   git-ignored, loaded by Docker Compose
+├── .env.example           committed, shows required variables
+├── VISUAL_GUIDE.md        this file
+└── README.md              full product specification
+```
+
+---
+
+## Common Issues
+
+**Port 80 already in use**
+Something else is using port 80 (IIS, another web server). Stop it or change the frontend port in `docker-compose.yml`:
+```yaml
+frontend:
+  ports:
+    - "3000:80"
+```
+Then access the rider app at http://localhost:3000.
+
+**Port 8080 already in use**
+Change the admin dashboard port:
+```yaml
+admin-dashboard:
+  ports:
+    - "8081:80"
+```
+
+**Backend keeps restarting**
+The backend waits for PostgreSQL to be healthy before starting. If it restarts more than 3 times, run:
+```bash
+docker compose logs backend
+```
+Usually a database connection issue. Run `docker compose down -v && docker compose up --build` for a clean start.
+
+**"No geo zones found" error when generating riders**
+The database seeder runs on startup. If you see this, the backend started before the seeder finished. Restart the backend:
+```bash
+docker compose restart backend
+```
+
+**Trigger fires but no payouts appear**
+Check that riders exist in the target zone. Generate 8k riders first (Admin → sidebar → Generate 8k Riders), then fire the trigger.

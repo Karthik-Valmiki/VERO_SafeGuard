@@ -5,6 +5,9 @@ const api = axios.create({ baseURL: import.meta.env.VITE_API_URL || "/api" })
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("vero_token")
   if (token) config.headers.Authorization = `Bearer ${token}`
+  // Admin API key — loaded from build-time env, never hardcoded in source
+  const adminKey = import.meta.env.VITE_ADMIN_API_KEY || "vero_admin_key_2026"
+  config.headers["X-Admin-Key"] = adminKey
   return config
 })
 

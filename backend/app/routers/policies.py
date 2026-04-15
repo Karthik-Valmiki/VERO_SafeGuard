@@ -8,7 +8,8 @@ from ..db import models
 from ..core.security import get_current_rider
 from ..db.database import get_db
 from ..core.config import DEMO_ACTIVATION_SECONDS, RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET
-from ..routers.auth import compute_r, compute_coverage_and_premium, _get_zone, _is_new_user, _secs_until_active
+from ..routers.auth import _get_zone, _is_new_user, _secs_until_active
+from ..services.insurance_logic import compute_r, compute_coverage_and_premium
 from ..schemas.auth import PremiumQuote
 
 router = APIRouter(prefix="/policies", tags=["Policies"])
@@ -195,13 +196,13 @@ def get_my_policy(
         db.query(models.Policy)
         .filter(
             models.Policy.profile_id == current_rider.profile_id,
-            models.Policy.status.in_(["ACTIVE", "PENDING"]),
+            models.Policy.status.in_(["ACTIVE", "PENDING", "EXPIRED"]),
         )
         .order_by(models.Policy.purchased_at.desc())
         .first()
     )
     if not policy:
-        raise HTTPException(status_code=404, detail="No active or pending policy found.")
+        raise HTTPException(status_code=404, detail="No policy found.")
 
     if policy.status == "PENDING" and policy.activated_at:
         act = policy.activated_at
@@ -209,6 +210,15 @@ def get_my_policy(
             act = act.replace(tzinfo=timezone.utc)
         if act <= now:
             policy.status = "ACTIVE"
+            db.commit()
+
+    # ── Expiry enforcement: transition ACTIVE → EXPIRED if past expiry date ──
+    if policy.status == "ACTIVE" and policy.expires_at:
+        exp = policy.expires_at
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        if exp <= now:
+            policy.status = "EXPIRED"
             db.commit()
 
     zone = _get_zone(current_rider.profile_id, db)

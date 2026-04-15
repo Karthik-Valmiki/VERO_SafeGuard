@@ -62,47 +62,4 @@ app.include_router(notifications.router)
 @app.get("/", tags=["Health"])
 def health_check():
     return {"status": "operational", "engine": "VERO v2.0"}
-
-async def telemetry_refresh_loop():
-    """Generates continuous authentic tracking signals globally every 15 minutes."""
-    while True:
-        await asyncio.sleep(900)  # 15 minutes
-        try:
-            db_session = SessionLocal()
-            now = datetime.now(timezone.utc)
-            
-            # Clean old logs to prevent unbounded bloat
-            db_session.query(models.RiderActivityLog).filter(models.RiderActivityLog.activity_type == "delivery").delete()
-            
-            shadows = db_session.query(models.RiderProfile).filter(models.RiderProfile.full_name.like("Shadow Rider%")).all()
-            if shadows:
-                zones = [z.zone_id for z in db_session.query(models.GeoZone.zone_id).all()]
-                new_logs = []
-                for s in shadows:
-                    primary_zone = db_session.query(models.RiderZone).filter_by(profile_id=s.profile_id, is_primary=True).first()
-                    z_id = primary_zone.zone_id if primary_zone else (random.choice(zones) if zones else 1)
-                    
-                    # 90% get totally valid fresh pings
-                    if random.random() < 0.90:
-                        for _ in range(random.randint(1, 4)):
-                            new_logs.append(models.RiderActivityLog(
-                                profile_id=s.profile_id, activity_type="delivery", zone_id=z_id,
-                                recorded_at=now - timedelta(minutes=random.randint(2, 45))
-                            ))
-                    else:
-                        # 10% get explicitly stale/fraudulent tracking data
-                        new_logs.append(models.RiderActivityLog(
-                            profile_id=s.profile_id, activity_type="delivery", zone_id=z_id,
-                            recorded_at=now - timedelta(minutes=random.randint(120, 300))
-                        ))
-                
-                db_session.add_all(new_logs)
-                db_session.commit()
-            db_session.close()
-            logging.info("Vero Engine: 15-Minute Telemetry Cycle Auto-Refreshed globally.")
-        except Exception as e:
-            logging.error(f"Telemetry loop error: {e}")
-
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(telemetry_refresh_loop())
+

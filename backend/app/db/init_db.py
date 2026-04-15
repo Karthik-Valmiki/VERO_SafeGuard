@@ -11,9 +11,10 @@ import math
 import random
 import bcrypt
 from datetime import date, timedelta, datetime, timezone
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from . import models
-
+from app.ml_engine import predict_rider_metrics
 
 def _hash(plain: str) -> str:
     return bcrypt.hashpw(plain.encode(), bcrypt.gensalt()).decode()
@@ -168,10 +169,26 @@ DEMO_RIDERS = [
 
 
 def run(db: Session) -> None:
+    _run_migrations(db)
     _seed_cities(db)
     _seed_zones(db)
     _seed_demo_riders(db)
-    # _seed_mass_scale(db)  # moved to dynamic admin endpoint
+
+
+def _run_migrations(db: Session) -> None:
+    """
+    Zero-downtime additive schema migrations.
+    Uses PostgreSQL 'ADD COLUMN IF NOT EXISTS' — safe to run on every startup.
+    Skips silently if columns already exist.
+    """
+    try:
+        db.execute(text(
+            "ALTER TABLE rider_profiles "
+            "ADD COLUMN IF NOT EXISTS consent_records JSONB"
+        ))
+        db.commit()
+    except Exception:
+        db.rollback()
 
 
 def _seed_cities(db: Session) -> None:
@@ -229,9 +246,9 @@ def _seed_demo_riders(db: Session) -> None:
         if not zone:
             zone = db.query(models.GeoZone).filter_by(city_id=city.city_id).first()
 
+        now = datetime.now(timezone.utc)
         latest = rd["history"][0]
         r_val = _r(latest["tu"], latest["de"], latest["cr"])
-
         rider = models.RiderProfile(
             full_name=rd["name"],
             phone_number=rd["phone"],
@@ -242,6 +259,18 @@ def _seed_demo_riders(db: Session) -> None:
             upi_id=rd["upi"],
             reliability_score=r_val,
             is_verified=True,
+            # DPDP 2023 — demo riders are pre-seeded as fully consented
+            consent_records={
+                "gps_zone":    True,
+                "gps_claims":  True,
+                "gps_oracle":  True,
+                "dsa_data":    True,
+                "dsa_read":    True,
+                "upi_kyc":     True,
+                "upi_consent": True,
+                "consented_at": now.isoformat(),
+                "mode":        "SEEDED",
+            },
         )
         db.add(rider)
         db.flush()
@@ -322,9 +351,9 @@ def _seed_mass_scale(db: Session, target_users: int = 8000) -> None:
             full_name=f"Shadow Rider {i}",
             phone_number=f"+9180{str(i).zfill(8)}",
             hashed_password=mock_hash,
-            platform=random.choice(platforms),
+            platform="mock_simulator",
             city_id=zone.city_id,
-            shift_hours={"start": "06:00", "end": "23:00"},
+            shift_hours={"start": "12:00", "end": "02:00"},
             upi_id=f"shadow{i}@axis",
             reliability_score=round(r_score, 2),
             is_verified=True,
@@ -339,10 +368,26 @@ def _seed_mass_scale(db: Session, target_users: int = 8000) -> None:
         )
         new_zones.append(rz)
 
+        # Use ML Model to deduce Metrics & True Premium (as requested)
+        zone_risk_index = float(zone.base_risk_multiplier)
+        pred_tu, pred_de, pred_cr = predict_rider_metrics(
+            shift_preference=random.randint(0,2),
+            zone_risk_index=zone_risk_index,
+            avg_daily_hours=random.uniform(4.0, 14.0),
+            experience_months=random.randint(1, 48),
+            weather_severity=0.5
+        )
+        r_score = min(((pred_tu * pred_de * pred_cr) ** 0.5), 1.0)
+        
+        city_benchmark = db.query(models.CityBenchmark).filter_by(city_id=zone.city_id).first()
+        base_rate = float(city_benchmark.baseline_weekly_income) * 0.02 if city_benchmark else 160.0
+        ml_premium = round(base_rate * zone_risk_index * (1.5 - r_score), 2)
+        ml_coverage = round(0.40 + 0.25 * r_score, 2)
+
         pol = models.Policy(
             profile_id=pr_id,
-            premium_amount=random.uniform(10.0, 45.0),
-            coverage_ratio=round(0.40 + 0.25 * r_score, 2),
+            premium_amount=ml_premium,
+            coverage_ratio=ml_coverage,
             r_factor_at_purchase=r_score,
             status="ACTIVE",
             purchased_at=now - timedelta(hours=random.randint(24, 72)),
@@ -353,13 +398,33 @@ def _seed_mass_scale(db: Session, target_users: int = 8000) -> None:
         new_policies.append(pol)
 
         # Generate starting baseline telemetry so fraud detection works
-        for j in range(random.randint(2, 5)):
-            new_activity.append(models.RiderActivityLog(
-                profile_id=pr_id,
-                activity_type="delivery",
-                zone_id=zone.zone_id,
-                recorded_at=now - timedelta(minutes=random.randint(5, 120)),
-            ))
+        is_bot = random.random() < 0.05
+        
+        if is_bot:
+            # Bot behavior (Fraud): Spams 15-25 pings in the last 4 minutes, 
+            # terrible loss ratio, often wrong zone
+            rider.total_payouts_received = round(random.uniform(5.0, 10.0) * pol.premium_amount, 2)
+            rider.total_premium_paid = round(pol.premium_amount, 2)
+            
+            for j in range(random.randint(15, 25)):
+                new_activity.append(models.RiderActivityLog(
+                    profile_id=pr_id,
+                    activity_type="delivery",
+                    zone_id=random.choice(zones).zone_id,
+                    recorded_at=now - timedelta(minutes=random.uniform(0, 4)),
+                ))
+        else:
+            # Normal behavior: 2-5 pings spread out over 2 hours in correct zone
+            rider.total_payouts_received = round(random.uniform(0.0, 1.2) * pol.premium_amount, 2)
+            rider.total_premium_paid = round(pol.premium_amount, 2)
+            
+            for j in range(random.randint(2, 5)):
+                new_activity.append(models.RiderActivityLog(
+                    profile_id=pr_id,
+                    activity_type="delivery",
+                    zone_id=zone.zone_id,
+                    recorded_at=now - timedelta(minutes=random.randint(5, 120)),
+                ))
 
     logger.info("Bulk inserting riders...")
     db.add_all(new_riders)

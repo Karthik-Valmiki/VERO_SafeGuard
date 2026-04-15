@@ -306,12 +306,15 @@ export default function AdminPanel() {
   const navigate                               = useNavigate()
   const notifRef                               = useRef(null)
 
+  const adminKey = import.meta.env.VITE_ADMIN_API_KEY || "vero_admin_key_2026"
+  const adminHeaders = { "X-Admin-Key": adminKey }
+
   const fetchSummary = useCallback(() => {
-    fetch("/api/dashboards/admin/summary")
+    fetch("/api/dashboards/admin/summary", { headers: adminHeaders })
       .then(r => r.json())
       .then(setSummary)
       .catch(() => {})
-    fetch("/api/dashboards/admin/notifications")
+    fetch("/api/dashboards/admin/notifications", { headers: adminHeaders })
       .then(r => r.json())
       .then(data => setNotifications(data.notifications || []))
       .catch(() => {})

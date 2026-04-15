@@ -81,16 +81,17 @@ export default function Profile() {
   const shiftStart   = shiftHours.start || rider.shift_start?.slice(0,5) || "—"
   const shiftEnd     = shiftHours.end   || rider.shift_end?.slice(0,5)   || "—"
   const cityDisplay  = riderD?.city     || rider.city     || "—"
+  const zoneDisplay  = riderD?.zone     || "Unassigned Zone"
   const platDisplay  = riderD?.platform || rider.platform || "—"
 
   const menuSections = [
     {
       title: "Account",
       items: [
-        { icon: Phone,      label: "Phone",    value: phoneDisplay,                    color: "text-brand-400" },
-        { icon: CreditCard, label: "UPI ID",   value: upiDisplay,                      color: "text-cyan-400" },
-        { icon: MapPin,     label: "City",     value: `${cityDisplay} · ${platDisplay}`, color: "text-orange-400" },
-        { icon: Clock,      label: "Shift",    value: `${shiftStart} – ${shiftEnd}`,   color: "text-purple-400" },
+        { icon: Phone,      label: "Phone",    value: phoneDisplay,                      color: "text-brand-400" },
+        { icon: CreditCard, label: "UPI ID",   value: upiDisplay,                        color: "text-cyan-400" },
+        { icon: MapPin,     label: "Zone",     value: `${cityDisplay} · ${zoneDisplay}`, color: "text-orange-400" },
+        { icon: Clock,      label: "Shift",    value: `${shiftStart} – ${shiftEnd}`,     color: "text-purple-400" },
       ],
     },
     {
@@ -126,7 +127,8 @@ export default function Profile() {
             </div>
             <div className="flex-1 min-w-0">
               <h2 className="text-base font-bold text-white truncate">{rider.name}</h2>
-              <p className="text-[11px] text-gray-500 mt-0.5">{platDisplay} · {cityDisplay}</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">{platDisplay}</p>
+              <p className="text-[10px] text-gray-500 mt-0.5">{cityDisplay} · {zoneDisplay}</p>
               <div className={`inline-flex items-center gap-1.5 mt-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold ${tier.bg} ${tier.color} border ${tier.border}`}>
                 <TierIcon size={10} />
                 {tier.name} Rider
