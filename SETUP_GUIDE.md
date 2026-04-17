@@ -1,7 +1,7 @@
 # VERO SafeGuard — Deployment & Setup Guide
 
 > [!NOTE]
-> **Recommended Reading Order**: If you are new to the platform, we recommend reading the [**Product Whitepaper (README.md)**](README.md) first to understand the product vision and mechanics before proceeding with the technical setup.
+> **Recommended Reading Order**: If you are new to the platform, we recommend reading the [**(README.md)**](README.md) first to understand the product vision and mechanics before proceeding with the technical setup.
 
 This document provides a comprehensive guide to set up and run the VERO SafeGuard platform locally. VERO is an AI-powered parametric income protection platform designed for India's food delivery gig economy.
 
