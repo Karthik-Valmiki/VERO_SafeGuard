@@ -12,7 +12,9 @@
   <img src="https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" />
 </p>
 
-> **Setup Instructions:** For setup in your local system, please visit the **[SETUP_GUIDE.md](./SETUP_GUIDE.md)**.
+> **Setup Instructions:** To run this project locally, refer to **[SETUP_GUIDE.md](./SETUP_GUIDE.md)**.
+>
+> **Final Pitch Deck:** Explore the complete architecture, including the ML pipeline, fraud detection system, and the business viability of the weekly pricing model — [View Pitch Deck](https://drive.google.com/file/d/11Kw09F-xZBmPYMXd9IdsvJLgSeKupLg3/view)
 
 ---
 
