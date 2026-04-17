@@ -9,13 +9,13 @@ import {
 } from "lucide-react"
 
 const ADMIN_KEY = import.meta.env.VITE_ADMIN_API_KEY || "vero_admin_key_2026"
-const HEADERS   = { "X-Admin-Key": ADMIN_KEY }
+const HEADERS = { "X-Admin-Key": ADMIN_KEY }
 
 // ── Tier config ──────────────────────────────────────────────────────────────
 const TIER_STYLE = {
-  HIGH:   { bar: "bg-rose-500",   badge: "bg-rose-500/10 text-rose-400 border border-rose-500/25",   glow: "shadow-rose-500/10" },
-  MEDIUM: { bar: "bg-amber-500",  badge: "bg-amber-500/10 text-amber-400 border border-amber-500/25", glow: "shadow-amber-500/10" },
-  LOW:    { bar: "bg-emerald-500",badge: "bg-emerald-500/10 text-emerald-400 border border-emerald-500/25", glow: "shadow-emerald-500/10" },
+  HIGH: { bar: "bg-rose-500", badge: "bg-rose-500/10 text-rose-400 border border-rose-500/25", glow: "shadow-rose-500/10" },
+  MEDIUM: { bar: "bg-amber-500", badge: "bg-amber-500/10 text-amber-400 border border-amber-500/25", glow: "shadow-amber-500/10" },
+  LOW: { bar: "bg-emerald-500", badge: "bg-emerald-500/10 text-emerald-400 border border-emerald-500/25", glow: "shadow-emerald-500/10" },
 }
 
 // ── Mini progress bar ────────────────────────────────────────────────────────
@@ -51,14 +51,14 @@ function ForecastCard({ zone, rank }) {
   const [expanded, setExpanded] = useState(false)
   const style = TIER_STYLE[zone.tier] || TIER_STYLE.LOW
   const isHigh = zone.tier === "HIGH"
-  const isMed  = zone.tier === "MEDIUM"
+  const isMed = zone.tier === "MEDIUM"
 
   return (
     <div
       className={`rounded-xl border transition-all duration-200 cursor-pointer
         ${isHigh ? "bg-rose-500/5 border-rose-500/15 hover:border-rose-500/30"
           : isMed ? "bg-amber-500/5 border-amber-500/15 hover:border-amber-500/30"
-          : "bg-white/2 border-white/5 hover:border-white/10"}
+            : "bg-white/2 border-white/5 hover:border-white/10"}
         ${style.glow}`}
       onClick={() => setExpanded(e => !e)}
     >
@@ -140,12 +140,12 @@ function ForecastCard({ zone, rank }) {
 // MAIN ANALYTICS TAB
 // ════════════════════════════════════════════════════════════════════════════
 export default function AnalyticsTab() {
-  const [data,     setData]     = useState(null)
+  const [data, setData] = useState(null)
   const [forecast, setForecast] = useState(null)
-  const [fcMeta,   setFcMeta]   = useState(null)
-  const [loading,  setLoading]  = useState(true)
-  const [fcLoad,   setFcLoad]   = useState(true)
-  const [fcError,  setFcError]  = useState(null)
+  const [fcMeta, setFcMeta] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [fcLoad, setFcLoad] = useState(true)
+  const [fcError, setFcError] = useState(null)
   const [fcFilter, setFcFilter] = useState("ALL")  // ALL | HIGH | MEDIUM | LOW
   const [refreshing, setRefreshing] = useState(false)
 
@@ -166,10 +166,10 @@ export default function AnalyticsTab() {
       .then(d => {
         setForecast(d.forecast || [])
         setFcMeta({
-          generated_at:   d.generated_at,
-          model_version:  d.model_version,
-          data_source:    d.data_source,
-          horizon:        d.horizon,
+          generated_at: d.generated_at,
+          model_version: d.model_version,
+          data_source: d.data_source,
+          horizon: d.horizon,
         })
         setFcLoad(false)
       })
@@ -194,9 +194,9 @@ export default function AnalyticsTab() {
     ? (fcFilter === "ALL" ? forecast : forecast.filter(z => z.tier === fcFilter))
     : []
 
-  const highCount   = forecast ? forecast.filter(z => z.tier === "HIGH").length   : 0
-  const medCount    = forecast ? forecast.filter(z => z.tier === "MEDIUM").length  : 0
-  const lowCount    = forecast ? forecast.filter(z => z.tier === "LOW").length     : 0
+  const highCount = forecast ? forecast.filter(z => z.tier === "HIGH").length : 0
+  const medCount = forecast ? forecast.filter(z => z.tier === "MEDIUM").length : 0
+  const lowCount = forecast ? forecast.filter(z => z.tier === "LOW").length : 0
 
   return (
     <div className="p-6 pb-24 space-y-8">
@@ -205,12 +205,12 @@ export default function AnalyticsTab() {
       <div>
         <h2 className="text-2xl font-bold">Analytics & Predictive Intelligence</h2>
         <p className="text-gray-400 text-sm mt-1">
-          Phase 3 — Geospatial risk modeling, financial analytics, and next-week disruption forecasts
+          Geospatial risk modeling, financial analytics, and next-week disruption forecasts
         </p>
       </div>
 
       {/* ══════════════════════════════════════════════════════════════
-          PHASE 3 — RISK FORECAST SECTION
+        RISK FORECAST SECTION
       ══════════════════════════════════════════════════════════════ */}
       <div className="rounded-2xl border border-violet-500/20 bg-gradient-to-br from-violet-500/5 to-transparent overflow-hidden">
 
@@ -224,7 +224,7 @@ export default function AnalyticsTab() {
               <h3 className="text-base font-bold text-white flex items-center gap-2">
                 Next-Week Disruption Forecast
                 <span className="text-[9px] font-bold bg-violet-500/20 text-violet-300 border border-violet-500/30 px-1.5 py-0.5 rounded-full uppercase tracking-wider">
-                  Phase 3
+                  7 Day
                 </span>
               </h3>
               <p className="text-[11px] text-gray-500 mt-0.5">
@@ -270,9 +270,9 @@ export default function AnalyticsTab() {
           {!fcLoad && forecast && (
             <div className="grid grid-cols-3 gap-3 mb-5">
               {[
-                { tier: "HIGH",   count: highCount,  label: "High Risk Zones",   color: "text-rose-400",    bg: "bg-rose-500/8 border-rose-500/15" },
-                { tier: "MEDIUM", count: medCount,   label: "Medium Risk Zones", color: "text-amber-400",   bg: "bg-amber-500/8 border-amber-500/15" },
-                { tier: "LOW",    count: lowCount,   label: "Low Risk Zones",    color: "text-emerald-400", bg: "bg-emerald-500/8 border-emerald-500/15" },
+                { tier: "HIGH", count: highCount, label: "High Risk Zones", color: "text-rose-400", bg: "bg-rose-500/8 border-rose-500/15" },
+                { tier: "MEDIUM", count: medCount, label: "Medium Risk Zones", color: "text-amber-400", bg: "bg-amber-500/8 border-amber-500/15" },
+                { tier: "LOW", count: lowCount, label: "Low Risk Zones", color: "text-emerald-400", bg: "bg-emerald-500/8 border-emerald-500/15" },
               ].map(({ tier, count, label, color, bg }) => (
                 <button
                   key={tier}
@@ -358,7 +358,7 @@ export default function AnalyticsTab() {
                       formatter={v => formatCurrency(v)}
                     />
                     <Bar dataKey="premium" name="Premium" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="payout"  name="Payout"  fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="payout" name="Payout" fill="#f43f5e" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
