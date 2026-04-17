@@ -14,7 +14,7 @@
 
 > **Setup Instructions:** To run this project locally, refer to **[SETUP_GUIDE.md](./SETUP_GUIDE.md)**.
 >
-> **Final Pitch Deck:** Explore the complete architecture, including the ML pipeline, fraud detection system, and the business viability of the weekly pricing model — [View Pitch Deck](https://drive.google.com/file/d/11Kw09F-xZBmPYMXd9IdsvJLgSeKupLg3/view)
+> **Pitch Deck:** Explore the complete architecture, including the ML pipeline, fraud detection system, and the business viability of the weekly pricing model — [View Pitch Deck](https://drive.google.com/file/d/11Kw09F-xZBmPYMXd9IdsvJLgSeKupLg3/view)
 
 ---
 
