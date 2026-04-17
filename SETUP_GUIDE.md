@@ -90,7 +90,7 @@ Once the containers are running, the following services are available:
 To experience the full functionality of the platform, use the following credentials:
 
 ### Rider PWA
-- **Login**: Use any valid 10-digit phone number (e.g., `9876543210`). The OTP is bypassed/fixed for demo purposes.
+- **Login**: Use any valid 10-digit phone number (e.g., `9876543210`). OTP verification is simulated in the demo. Enter OTP when prompted to continue
 
 ### Admin Dashboard
 - **Username**: `admin@vero`
