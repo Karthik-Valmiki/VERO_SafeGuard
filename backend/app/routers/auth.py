@@ -1,20 +1,24 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from sqlalchemy import func
 from datetime import datetime, timedelta, timezone
 from jose import jwt
 import bcrypt
 import math
 import random
+import asyncio
 
 from ..db import models
 from ..db.database import get_db
 from ..schemas.auth import OtpRequest, OtpVerify, RiderCreate, RiderLogin, TokenResponse, UpiVerifyRequest, UpiVerifyResponse
 from ..core.config import (
-    SECRET_KEY,
+    settings,
     ALGORITHM,
     ACCESS_TOKEN_EXPIRE_HOURS,
     DEMO_ACTIVATION_SECONDS,
 )
+from ..core.redis import cache_get, cache_set, cache_delete
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -24,36 +28,39 @@ OTP_EXPIRY_SECONDS = 300  # 5 minutes
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 
-def _hash_password(plain: str) -> str:
-    return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+async def _hash_password(plain: str) -> str:
+    return await asyncio.to_thread(
+        lambda: bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    )
 
 
-def _verify_password(plain: str, hashed: str) -> bool:
-    return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+async def _verify_password(plain: str, hashed: str) -> bool:
+    return await asyncio.to_thread(
+        lambda: bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    )
 
 
 def _make_token(rider_id: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
-    return jwt.encode({"sub": rider_id, "exp": expire}, SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode({"sub": rider_id, "exp": expire}, settings.SECRET_KEY, algorithm=ALGORITHM)
 
 
 from ..services.insurance_logic import compute_r, compute_coverage_and_premium
 
 
-def _get_zone(profile_id, db: Session):
-    link = (
-        db.query(models.RiderZone)
+async def _get_zone(profile_id, db: AsyncSession):
+    res = await db.execute(
+        select(models.RiderZone)
         .filter(
             models.RiderZone.profile_id == profile_id,
             models.RiderZone.is_primary == True,
         )
-        .first()
     )
+    link = res.scalars().first()
     if not link:
         return None
-    return (
-        db.query(models.GeoZone).filter(models.GeoZone.zone_id == link.zone_id).first()
-    )
+    res = await db.execute(select(models.GeoZone).filter(models.GeoZone.zone_id == link.zone_id))
+    return res.scalars().first()
 
 
 def _secs_until_active(policy) -> int:
@@ -65,31 +72,34 @@ def _secs_until_active(policy) -> int:
     return max(0, int((act - datetime.now(timezone.utc)).total_seconds()))
 
 
-def _is_new_user(profile_id, db: Session) -> bool:
-    return (
-        db.query(models.RiderPerformanceHistory)
+async def _is_new_user(profile_id, db: AsyncSession) -> bool:
+    res = await db.execute(
+        select(func.count(models.RiderPerformanceHistory.history_id))
         .filter(models.RiderPerformanceHistory.profile_id == profile_id)
-        .count()
-    ) < 2
+    )
+    return res.scalar() < 2
 
 
 # ── Zones endpoint (public, for registration dropdown) ────────────────────────
 
 
 @router.get("/zones")
-def get_zones_for_city(city: str, db: Session = Depends(get_db)):
+async def get_zones_for_city(city: str, db: AsyncSession = Depends(get_db)):
     """Returns all zones for a given city name. Used in registration dropdown."""
-    city_obj = db.query(models.CityBenchmark).filter(
-        models.CityBenchmark.city_name == city.strip().title()
-    ).first()
+    res = await db.execute(
+        select(models.CityBenchmark).filter(
+            models.CityBenchmark.city_name == city.strip().title()
+        )
+    )
+    city_obj = res.scalars().first()
     if not city_obj:
         return {"zones": []}
-    zones = (
-        db.query(models.GeoZone)
+    res = await db.execute(
+        select(models.GeoZone)
         .filter(models.GeoZone.city_id == city_obj.city_id)
         .order_by(models.GeoZone.zone_name)
-        .all()
     )
+    zones = res.scalars().all()
     return {
         "zones": [
             {
@@ -106,65 +116,35 @@ def get_zones_for_city(city: str, db: Session = Depends(get_db)):
 
 
 @router.post("/otp/send", status_code=200)
-def send_otp(data: OtpRequest, db: Session = Depends(get_db)):
+async def send_otp(data: OtpRequest):
     """
-    Simulated OTP — generates a 6-digit code and returns it directly
-    (no real SMS). In production this would call Twilio/MSG91.
+    Simulated OTP — generates a 6-digit code and stores in Redis
     """
     otp_code = str(random.randint(100000, 999999))
-    expires_at = datetime.now(timezone.utc) + timedelta(seconds=OTP_EXPIRY_SECONDS)
-
-    existing = (
-        db.query(models.OtpStore)
-        .filter(models.OtpStore.phone_number == data.phone_number)
-        .first()
-    )
-    if existing:
-        existing.otp_code = otp_code
-        existing.expires_at = expires_at
-        existing.is_used = False
-    else:
-        db.add(
-            models.OtpStore(
-                phone_number=data.phone_number,
-                otp_code=otp_code,
-                expires_at=expires_at,
-                is_used=False,
-            )
-        )
-    db.commit()
+    await cache_set(f"otp:{data.phone_number}", otp_code, OTP_EXPIRY_SECONDS)
 
     return {
         "message": f"OTP sent to {data.phone_number} (demo — shown here)",
-        "otp_code": otp_code,  # will remove in production code
+        "otp_code": otp_code,
         "expires_in_seconds": OTP_EXPIRY_SECONDS,
     }
 
 
 @router.post("/otp/verify", status_code=200)
-def verify_otp(data: OtpVerify, db: Session = Depends(get_db)):
+async def verify_otp(data: OtpVerify):
     """Verify OTP before registration. Returns verified=True on success."""
-    record = (
-        db.query(models.OtpStore)
-        .filter(models.OtpStore.phone_number == data.phone_number)
-        .first()
-    )
+    stored_otp = await cache_get(f"otp:{data.phone_number}")
 
-    now = datetime.now(timezone.utc)
-    if not record or record.is_used:
-        raise HTTPException(status_code=400, detail="OTP not found or already used")
+    if not stored_otp:
+        raise HTTPException(status_code=400, detail="OTP expired or not requested")
 
-    exp = record.expires_at
-    if exp.tzinfo is None:
-        exp = exp.replace(tzinfo=timezone.utc)
-    if now > exp:
-        raise HTTPException(status_code=400, detail="OTP expired")
-
-    if record.otp_code != data.otp_code:
+    if stored_otp != data.otp_code:
         raise HTTPException(status_code=400, detail="Invalid OTP")
 
-    record.is_used = True
-    db.commit()
+    # Mark as verified using a temp key that registration checks
+    await cache_set(f"otp_verified:{data.phone_number}", "1", 3600) # Valid for 1 hour
+    await cache_delete(f"otp:{data.phone_number}")
+    
     return {"verified": True, "phone_number": data.phone_number}
 
 
@@ -174,62 +154,56 @@ def verify_otp(data: OtpVerify, db: Session = Depends(get_db)):
 @router.post(
     "/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED
 )
-def register(data: RiderCreate, db: Session = Depends(get_db)):
+async def register(data: RiderCreate, db: AsyncSession = Depends(get_db)):
     """
     Register a new rider.
     - OTP must be verified before calling this.
     - Creates account + assigns zone based on city.
     - Does NOT create a policy — rider sees premium quote and pays separately.
     """
-    # Validate OTP was verified
-    otp_record = (
-        db.query(models.OtpStore)
-        .filter(models.OtpStore.phone_number == data.phone_number)
-        .first()
-    )
-    if not otp_record or not otp_record.is_used:
+    verified = await cache_get(f"otp_verified:{data.phone_number}")
+    if not verified:
         raise HTTPException(
             status_code=400,
             detail="Phone number not OTP-verified. Call /auth/otp/send and /auth/otp/verify first.",
         )
 
-    if (
-        db.query(models.RiderProfile)
+    res = await db.execute(
+        select(models.RiderProfile)
         .filter(models.RiderProfile.phone_number == data.phone_number)
-        .first()
-    ):
+    )
+    if res.scalars().first():
         raise HTTPException(status_code=409, detail="Phone number already registered")
 
-    city = (
-        db.query(models.CityBenchmark)
+    res = await db.execute(
+        select(models.CityBenchmark)
         .filter(models.CityBenchmark.city_name == data.city)
-        .first()
     )
+    city = res.scalars().first()
     if not city:
         raise HTTPException(status_code=400, detail=f"City '{data.city}' not supported")
 
-    # Assign zone — use user-selected zone_id if provided, otherwise pick median-risk
     if data.zone_id:
-        zone = (
-            db.query(models.GeoZone)
+        res = await db.execute(
+            select(models.GeoZone)
             .filter(
                 models.GeoZone.zone_id == data.zone_id,
                 models.GeoZone.city_id == city.city_id,
             )
-            .first()
         )
+        zone = res.scalars().first()
         if not zone:
             raise HTTPException(
                 status_code=400,
                 detail=f"Zone {data.zone_id} does not belong to city '{data.city}'"
             )
     else:
-        city_zones = (
-            db.query(models.GeoZone)
+        res = await db.execute(
+            select(models.GeoZone)
             .filter(models.GeoZone.city_id == city.city_id)
             .order_by(models.GeoZone.base_risk_multiplier)
-            .all()
         )
+        city_zones = res.scalars().all()
         if not city_zones:
             zone = models.GeoZone(
                 city_id=city.city_id,
@@ -237,14 +211,15 @@ def register(data: RiderCreate, db: Session = Depends(get_db)):
                 base_risk_multiplier=city.default_risk_multiplier,
             )
             db.add(zone)
-            db.flush()
+            await db.flush()
         else:
             zone = city_zones[len(city_zones) // 2]
 
+    hashed_pw = await _hash_password(data.password)
     rider = models.RiderProfile(
         full_name=data.name,
         phone_number=data.phone_number,
-        hashed_password=_hash_password(data.password),
+        hashed_password=hashed_pw,
         platform=data.platform,
         city_id=city.city_id,
         shift_hours={"start": data.shift_start, "end": data.shift_end},
@@ -253,7 +228,7 @@ def register(data: RiderCreate, db: Session = Depends(get_db)):
         is_verified=True,
     )
     db.add(rider)
-    db.flush()
+    await db.flush()
 
     db.add(
         models.RiderZone(
@@ -261,7 +236,6 @@ def register(data: RiderCreate, db: Session = Depends(get_db)):
         )
     )
 
-    # Seed initial activity log so payout engine doesn't block as "no activity"
     db.add(
         models.RiderActivityLog(
             profile_id=rider.profile_id,
@@ -269,13 +243,14 @@ def register(data: RiderCreate, db: Session = Depends(get_db)):
             zone_id=zone.zone_id,
         )
     )
-    db.commit()
-    db.refresh(rider)
+    await db.commit()
+    await db.refresh(rider)
 
-    # Compute premium quote (no policy created yet)
-    coverage, premium, weekly_cap = compute_coverage_and_premium(
+    coverage, premium, weekly_cap = await compute_coverage_and_premium(
         city, zone, rider.profile_id, is_new=True, db=db
     )
+
+    await cache_delete(f"otp_verified:{data.phone_number}")
 
     return TokenResponse(
         access_token=_make_token(str(rider.profile_id)),
@@ -300,35 +275,39 @@ def register(data: RiderCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(data: RiderLogin, db: Session = Depends(get_db)):
-    rider = (
-        db.query(models.RiderProfile)
+async def login(data: RiderLogin, db: AsyncSession = Depends(get_db)):
+    res = await db.execute(
+        select(models.RiderProfile)
         .filter(models.RiderProfile.phone_number == data.phone_number)
-        .first()
     )
-    if not rider or not _verify_password(data.password, rider.hashed_password):
+    rider = res.scalars().first()
+    if not rider:
+        raise HTTPException(status_code=401, detail="Invalid phone number or password")
+        
+    pw_match = await _verify_password(data.password, rider.hashed_password)
+    if not pw_match:
         raise HTTPException(status_code=401, detail="Invalid phone number or password")
 
-    city = (
-        db.query(models.CityBenchmark)
+    res = await db.execute(
+        select(models.CityBenchmark)
         .filter(models.CityBenchmark.city_id == rider.city_id)
-        .first()
     )
-    zone = _get_zone(rider.profile_id, db)
+    city = res.scalars().first()
+    zone = await _get_zone(rider.profile_id, db)
 
-    is_new = _is_new_user(rider.profile_id, db)
-    r = compute_r(rider.profile_id, db) if not is_new else 0.0
-    coverage, premium, weekly_cap = compute_coverage_and_premium(city, zone, rider.profile_id, is_new, db)
+    is_new = await _is_new_user(rider.profile_id, db)
+    r = await compute_r(rider.profile_id, db) if not is_new else 0.0
+    coverage, premium, weekly_cap = await compute_coverage_and_premium(city, zone, rider.profile_id, is_new, db)
 
-    policy = (
-        db.query(models.Policy)
+    res = await db.execute(
+        select(models.Policy)
         .filter(
             models.Policy.profile_id == rider.profile_id,
             models.Policy.status.in_(["ACTIVE", "PENDING"]),
         )
         .order_by(models.Policy.purchased_at.desc())
-        .first()
     )
+    policy = res.scalars().first()
 
     return TokenResponse(
         access_token=_make_token(str(rider.profile_id)),
@@ -371,20 +350,13 @@ _UPI_BANK_MAP: dict[str, str] = {
 
 
 @router.post("/upi/verify", response_model=UpiVerifyResponse)
-def verify_upi_penny_drop(data: UpiVerifyRequest):
+async def verify_upi_penny_drop(data: UpiVerifyRequest):
     """
     DPDP 2023 §7 UPI KYC compliance — simulated NPCI penny-drop.
-
-    Validates VPA format, resolves the bank from the handle suffix, and
-    returns a realistic test-mode response. In production this would call
-    Razorpay Fund Account Validation or the NPCI sandbox directly.
-
-    This endpoint is purely additive — no DB write, no auth required.
     """
-    vpa = data.upi_id  # already validated + lower-cased by Pydantic
+    vpa = data.upi_id
     username, handle = vpa.split("@", 1)
 
-    # Derive human-readable name from VPA username
     display_name = username.replace(".", " ").replace("_", " ").replace("-", " ").title()
 
     bank = _UPI_BANK_MAP.get(handle, "HDFC Bank")

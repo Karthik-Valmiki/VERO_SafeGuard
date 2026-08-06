@@ -1,7 +1,6 @@
 import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-SECRET_KEY = "VERO_SRMIST_2026_SECRET"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_HOURS = 24
 
@@ -17,11 +16,15 @@ RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID", "")
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "")
 
 # Admin API key — protects all /dashboards/admin/* endpoints
-ADMIN_API_KEY = os.getenv("ADMIN_API_KEY", "vero_admin_key_2026")
-
 
 class Settings(BaseSettings):
     DATABASE_URL: str
+    REDIS_URL: str
+    SECRET_KEY: str
+    ADMIN_API_KEY: str
+    DB_POOL_SIZE: int = 20
+    DB_MAX_OVERFLOW: int = 10
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

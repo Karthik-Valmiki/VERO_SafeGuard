@@ -167,6 +167,24 @@ def process_payouts_for_event(
         # Evaluate each policy independently. A single bad row must never abort
         # payouts for the rest of the zone — errors are caught per-rider below.
         rider_payouts: dict = {}
+        
+        # Pre-compute zone_avg_payout_count ONCE to avoid N+1 aggregate queries
+        zone_avg_payout_count = (
+            db.query(sa_func.avg(
+                db.query(sa_func.count(models.Payout.payout_id))
+                .join(models.Policy, models.Payout.policy_id == models.Policy.policy_id)
+                .join(models.RiderZone, models.Policy.profile_id == models.RiderZone.profile_id)
+                .filter(
+                    models.RiderZone.zone_id == zone_id,
+                    models.Payout.status == "SUCCESS",
+                )
+                .group_by(models.Policy.profile_id)
+                .correlate(None)
+                .scalar_subquery()
+            ))
+        ).scalar() or None
+
+        fraud_logs_to_insert = []
 
         for policy in active_policies:
             try:
@@ -180,15 +198,19 @@ def process_payouts_for_event(
                     interval_count=interval_count,
                     now=now,
                     rider_payouts=rider_payouts,
+                    zone_avg_payout_count=zone_avg_payout_count,
+                    fraud_logs_to_insert=fraud_logs_to_insert,
                 )
             except Exception as rider_err:
                 logger.error(
                     f"[PAYOUT] Error evaluating policy {policy.policy_id}: {rider_err}",
                     exc_info=True,
                 )
-                # Do NOT let one rider crash the whole event — continue.
-                db.rollback()
                 continue
+
+        if fraud_logs_to_insert:
+            db.bulk_save_objects(fraud_logs_to_insert)
+            db.commit()
 
         if not rider_payouts:
             logger.info("[PAYOUT] No eligible riders after fraud/shift checks — done.")
@@ -273,6 +295,8 @@ def _evaluate_rider(
     interval_count: int,
     now: datetime,
     rider_payouts: dict,
+    zone_avg_payout_count: float | None,
+    fraud_logs_to_insert: list,
 ):
     """
     Evaluates a single rider/policy for payout eligibility.
@@ -319,7 +343,7 @@ def _evaluate_rider(
             logger.info(f"[DEMO] Allowing mock rider {rider.profile_id} without logs.")
         else:
             logger.info(f"[SKIP/FRAUD] No activity logs for {policy.profile_id}")
-            db.add(models.FraudCheckLog(
+            fraud_logs_to_insert.append(models.FraudCheckLog(
                 profile_id=rider.profile_id,
                 event_id=event.event_id,
                 policy_id=policy.policy_id,
@@ -328,7 +352,6 @@ def _evaluate_rider(
                 features={"reason": "no_activity_logs"},
                 reason="No delivery activity logs found",
             ))
-            db.commit()
             return
     else:
         # Isolation Forest feature construction.
@@ -372,22 +395,6 @@ def _evaluate_rider(
         .scalar() or 0
     )
 
-    # Zone-average payout count: how many payouts do riders in this zone typically receive?
-    # Compare this rider against zone peers to detect cherry-picking behaviour.
-    zone_avg_payout_count = (
-        db.query(sa_func.avg(
-            db.query(sa_func.count(models.Payout.payout_id))
-            .join(models.Policy, models.Payout.policy_id == models.Policy.policy_id)
-            .join(models.RiderZone, models.Policy.profile_id == models.RiderZone.profile_id)
-            .filter(
-                models.RiderZone.zone_id == zone_id,
-                models.Payout.status == "SUCCESS",
-            )
-            .correlate(None)
-            .scalar_subquery()
-        ))
-    ).scalar() or None
-
     if zone_avg_payout_count and float(zone_avg_payout_count) > 0:
         claims_anomaly_ratio = round(rider_payout_count / float(zone_avg_payout_count), 3)
     elif rider_payout_count > 0:
@@ -412,7 +419,7 @@ def _evaluate_rider(
         ping_burst_score=ping_burst_score,
     )
 
-    db.add(models.FraudCheckLog(
+    fraud_logs_to_insert.append(models.FraudCheckLog(
         profile_id=rider.profile_id,
         event_id=event.event_id,
         policy_id=policy.policy_id,
@@ -421,7 +428,6 @@ def _evaluate_rider(
         features=fraud_result["features"],
         reason=f"ML prediction: {fraud_result['result']} (score: {fraud_result['anomaly_score']:.4f})",
     ))
-    db.commit()
 
     # Isolation Forest returns -1 for anomalous riders. Block without accumulating
     # a payout record so the loss ratio stays clean in the admin analytics.

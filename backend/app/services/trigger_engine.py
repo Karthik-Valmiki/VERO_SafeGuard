@@ -2,10 +2,10 @@ from datetime import datetime, timezone, timedelta
 import logging
 import time
 import random
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
 from fastapi import BackgroundTasks
 from ..db import models
-from ..db.database import SessionLocal
 from ..schemas.trigger import TriggerCreate, TriggerResponse
 from ..services import payout_engine, mock_api
 
@@ -32,36 +32,22 @@ def _overlap_hours(d_start: str, d_end: str, s_start: str, s_end: str) -> float:
     return round(overlap_min / 60.0, 4)
 
 
-def _fetch_and_validate(data: TriggerCreate) -> tuple[bool, str, dict]:
-    """
-    Calls the real/simulation API layer, validates threshold, returns
-    (passed, summary_message, flat_api_response_dict).
-    The flat dict preserves all existing field names so the rest of the
-    engine is unaffected. build_pipeline_response() is called separately
-    in activate_trigger() to produce the 4-layer UI payload.
-    """
+async def _fetch_and_validate(data: TriggerCreate) -> tuple[bool, str, dict]:
     mt = data.metric_type
     metadata = data.event_metadata or {}
     threshold_value = metadata.get("thresholdValue", 0)
 
     if mt == "WEATHER":
-        api_data = mock_api.fetch_weather(data.zone_id)
-
-        # Check thresholds based on metadata flags
+        api_data = await mock_api.fetch_weather(data.zone_id)
         if metadata.get("hail"):
-            # Hailstorm is binary — any confirmed hail event clears the threshold.
             met = threshold_value >= 1
-            threshold_desc = (
-                f"Hail {'confirmed' if met else 'not confirmed'} · threshold: confirmed"
-            )
+            threshold_desc = f"Hail {'confirmed' if met else 'not confirmed'} · threshold: confirmed"
         elif metadata.get("heat"):
-            # Sustained extreme heat: both temperature AND duration must exceed thresholds.
             temp = threshold_value
             sustained = api_data.get("sustained_hours", 0)
             met = temp >= 40 and sustained >= 2
             threshold_desc = f"Temperature {temp}°C · sustained {sustained}h · threshold ≥40°C for 2h"
         else:
-            # Heavy rain: rainfall intensity AND sustained duration both gated.
             rainfall = threshold_value
             wind = api_data.get("wind_kmh", 0)
             sustained = api_data.get("sustained_hours", 0)
@@ -78,7 +64,7 @@ def _fetch_and_validate(data: TriggerCreate) -> tuple[bool, str, dict]:
         return met, summary, api_data
 
     elif mt == "AQI":
-        api_data = mock_api.fetch_aqi(data.zone_id)
+        api_data = await mock_api.fetch_aqi(data.zone_id)
         aqi = threshold_value
         sustained = api_data.get("sustained_hours", 0)
         met = aqi > 300 and sustained >= 2
@@ -95,10 +81,7 @@ def _fetch_and_validate(data: TriggerCreate) -> tuple[bool, str, dict]:
 
     elif mt == "PLATFORM_BLACKOUT":
         platform = data.platform or "zomato"
-        api_data = mock_api.fetch_platform_status(platform)
-
-        # Platform outage only qualifies if it falls inside a peak delivery window.
-        # Off-peak outages don't materially impact rider income.
+        api_data = await mock_api.fetch_platform_status(platform)
         trigger_mins = _hhmm_to_minutes(data.trigger_time)
         in_peak = any(
             _hhmm_to_minutes(s) <= trigger_mins <= _hhmm_to_minutes(e)
@@ -110,8 +93,6 @@ def _fetch_and_validate(data: TriggerCreate) -> tuple[bool, str, dict]:
                 f"PLATFORM_BLACKOUT only triggers during peak hours (12:00–14:30 or 19:00–22:30). Got {data.trigger_time}.",
                 api_data,
             )
-
-        # 45-minute minimum ensures brief glitches don't constitute an insured event.
         outage_min = threshold_value
         met = outage_min > 45
 
@@ -126,7 +107,7 @@ def _fetch_and_validate(data: TriggerCreate) -> tuple[bool, str, dict]:
         return met, summary, api_data
 
     elif mt == "SOCIAL_DISRUPTION":
-        api_data = mock_api.fetch_social_signals(data.zone_id)
+        api_data = await mock_api.fetch_social_signals(data.zone_id)
         confidence = threshold_value
         closure = api_data.get("restaurant_closure_pct", 0)
         met = confidence > 75 and closure > 80
@@ -145,8 +126,9 @@ def _fetch_and_validate(data: TriggerCreate) -> tuple[bool, str, dict]:
     return False, f"Unknown metric_type: {mt}", {}
 
 
-def _promote_pending_policies(db: Session, now: datetime):
-    pending = db.query(models.Policy).filter(models.Policy.status == "PENDING").all()
+async def _promote_pending_policies(db: AsyncSession, now: datetime):
+    result = await db.execute(select(models.Policy).filter(models.Policy.status == "PENDING"))
+    pending = result.scalars().all()
     promoted = 0
     for p in pending:
         if p.activated_at:
@@ -157,14 +139,13 @@ def _promote_pending_policies(db: Session, now: datetime):
                 p.status = "ACTIVE"
                 promoted += 1
     if promoted:
-        db.commit()
+        await db.commit()
 
-def activate_trigger(
-    data: TriggerCreate, db: Session, background_tasks: BackgroundTasks
+async def activate_trigger(
+    data: TriggerCreate, db: AsyncSession, background_tasks: BackgroundTasks
 ) -> TriggerResponse:
-    zone = (
-        db.query(models.GeoZone).filter(models.GeoZone.zone_id == data.zone_id).first()
-    )
+    result = await db.execute(select(models.GeoZone).filter(models.GeoZone.zone_id == data.zone_id))
+    zone = result.scalars().first()
     if not zone:
         raise ValueError(f"Zone {data.zone_id} does not exist.")
 
@@ -173,11 +154,10 @@ def activate_trigger(
             f"trigger_end_time ({data.trigger_end_time}) must be after trigger_time ({data.trigger_time})."
         )
 
-    passed, threshold_msg, api_data = _fetch_and_validate(data)
+    passed, threshold_msg, api_data = await _fetch_and_validate(data)
     if not passed:
         raise ValueError(f"Trigger rejected: {threshold_msg}")
 
-    # Build the 4-layer pipeline response for the UI
     event_meta_in = data.event_metadata or {}
     pipeline_response = mock_api.build_pipeline_response(
         metric_type=data.metric_type,
@@ -189,7 +169,7 @@ def activate_trigger(
     )
 
     now = datetime.now(timezone.utc)
-    _promote_pending_policies(db, now)
+    await _promote_pending_policies(db, now)
 
     metadata = dict(data.event_metadata or {})
     metadata.update(
@@ -210,34 +190,30 @@ def activate_trigger(
         is_active=True,
     )
     db.add(event)
-    db.commit()
-    db.refresh(event)
+    await db.commit()
+    await db.refresh(event)
 
-    zone_links = (
-        db.query(models.RiderZone)
-        .filter(models.RiderZone.zone_id == data.zone_id)
-        .all()
-    )
+    result = await db.execute(select(models.RiderZone).filter(models.RiderZone.zone_id == data.zone_id))
+    zone_links = result.scalars().all()
     zone_profile_ids = {link.profile_id for link in zone_links}
 
-    active_policies = (
-        db.query(models.Policy)
-        .filter(
-            models.Policy.profile_id.in_(zone_profile_ids),
-            models.Policy.status == "ACTIVE",
-            models.Policy.expires_at > now,
+    if not zone_profile_ids:
+        active_policies = []
+    else:
+        result = await db.execute(
+            select(models.Policy).filter(
+                models.Policy.profile_id.in_(zone_profile_ids),
+                models.Policy.status == "ACTIVE",
+                models.Policy.expires_at > now,
+            )
         )
-        .all()
-    )
+        active_policies = result.scalars().all()
 
     eligible, skipped_shift = 0, 0
 
     for policy in active_policies:
-        rider = (
-            db.query(models.RiderProfile)
-            .filter(models.RiderProfile.profile_id == policy.profile_id)
-            .first()
-        )
+        res = await db.execute(select(models.RiderProfile).filter(models.RiderProfile.profile_id == policy.profile_id))
+        rider = res.scalars().first()
         if not rider:
             continue
         shift_start = rider.shift_hours.get("start", "00:00") if rider.shift_hours else "00:00"
@@ -250,19 +226,13 @@ def activate_trigger(
         else:
             skipped_shift += 1
 
-    # interval_count is derived from the disruption window duration, not from the rider
-    # count. One interval per 30 minutes of disruption ensures payouts are spread
-    # realistically across the window even when rider counts change mid-event.
     disruption_hours = _overlap_hours(
         data.trigger_time, data.trigger_end_time, "00:00", "23:59"
     )
     interval_count = max(1, round(disruption_hours * 2))
 
-    city = (
-        db.query(models.CityBenchmark)
-        .filter(models.CityBenchmark.city_id == zone.city_id)
-        .first()
-    )
+    res = await db.execute(select(models.CityBenchmark).filter(models.CityBenchmark.city_id == zone.city_id))
+    city = res.scalars().first()
     est_new = est_ret = 0.0
     if city and float(city.baseline_active_hours) > 0:
         hourly   = float(city.baseline_weekly_income) / float(city.baseline_active_hours)
@@ -274,9 +244,6 @@ def activate_trigger(
         f"disruption={disruption_hours}h | {interval_count} intervals | {eligible} eligible"
     )
 
-    # Only serializable primitives are passed to the background task.
-    # The task opens its own SQLAlchemy session to avoid stale-object errors
-    # that arise when the HTTP request session expires after commit.
     background_tasks.add_task(
         payout_engine.run_payouts_in_background,
         event.event_id,
@@ -300,5 +267,5 @@ def activate_trigger(
         interval_count=interval_count,
         estimated_payout_new=est_new,
         estimated_payout_returning=est_ret,
-        mock_api_data=pipeline_response,   # 4-layer structure for UI
+        mock_api_data=pipeline_response,
     )

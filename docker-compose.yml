@@ -9,16 +9,16 @@
 # Backend API docs at http://localhost:8000/docs
 #
 # All secrets (DB password, Razorpay keys, admin API key) are loaded from
-# the .env file in this directory.
+# the .env file in this directory.  Copy .env.example → .env first.
 #
 # To override any variable, set it in your shell before running:
 #   set RAZORPAY_KEY_ID=rzp_live_xxxx
 #   docker compose up --build
-#
-# For production, use a proper secrets manager and secure environment variables.
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
   db:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -34,6 +34,20 @@ services:
       timeout: 5s
       retries: 10
 
+  # ── Redis ───────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── FastAPI Backend ─────────────────────────────────────────────────────────
   backend:
     build:
       context: ./backend
@@ -41,16 +55,23 @@ services:
         CACHE_BUSTER: "172138"
     restart: unless-stopped
     environment:
-      DATABASE_URL: ${DATABASE_URL}
+      # Async URL for SQLAlchemy AsyncSession (request-time queries)
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-vero}
+      # Sync URL used ONLY during startup for create_all()
+      SYNC_DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-vero}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY}
+      ADMIN_API_KEY: ${ADMIN_API_KEY}
       RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID}
       RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET}
-      ADMIN_API_KEY: ${ADMIN_API_KEY}
     env_file:
       - .env
     ports:
       - "8000:8000"
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test:
@@ -62,8 +83,10 @@ services:
       timeout: 5s
       retries: 15
       start_period: 60s
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    # 4 async workers — each handles thousands of concurrent connections
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
 
+  # ── Rider Frontend ──────────────────────────────────────────────────────────
   frontend:
     build:
       context: ./frontend
@@ -88,6 +111,7 @@ services:
       retries: 5
       start_period: 10s
 
+  # ── Admin Dashboard ─────────────────────────────────────────────────────────
   admin-dashboard:
     build:
       context: ./admin-dashboard
@@ -114,3 +138,5 @@ services:
 
 volumes:
   pgdata:
+  redisdata:
+

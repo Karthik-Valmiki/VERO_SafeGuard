@@ -6,21 +6,24 @@ Called by routers and payout_engine.
 """
 import math
 import logging
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from sqlalchemy import func
+import asyncio
 from datetime import datetime, timezone
 from ..db import models
 from ..ml_engine import predict_rider_metrics
 
 logger = logging.getLogger(__name__)
 
-def compute_r(profile_id, db: Session) -> float:
+async def compute_r(profile_id, db: AsyncSession) -> float:
     """R = min(sqrt(TU × DE × CR), 1.0). Returns 0.0 for new users."""
-    h = (
-        db.query(models.RiderPerformanceHistory)
+    result = await db.execute(
+        select(models.RiderPerformanceHistory)
         .filter(models.RiderPerformanceHistory.profile_id == profile_id)
         .order_by(models.RiderPerformanceHistory.week_start_date.desc())
-        .first()
     )
+    h = result.scalars().first()
     if not h:
         return 0.0
     tu = float(h.time_utilization or 0.0)
@@ -29,15 +32,15 @@ def compute_r(profile_id, db: Session) -> float:
     return round(min(math.sqrt(tu * de * cr), 1.0), 2)
 
 
-def compute_r_breakdown(profile_id, db: Session) -> dict:
+async def compute_r_breakdown(profile_id, db: AsyncSession) -> dict:
     """Returns full R breakdown — last 4 weeks of history + current R."""
-    rows = (
-        db.query(models.RiderPerformanceHistory)
+    result = await db.execute(
+        select(models.RiderPerformanceHistory)
         .filter(models.RiderPerformanceHistory.profile_id == profile_id)
         .order_by(models.RiderPerformanceHistory.week_start_date.desc())
         .limit(4)
-        .all()
     )
+    rows = result.scalars().all()
     if not rows:
         return {"r": 0.0, "tu": 0.0, "de": 0.0, "cr": 0.0, "weeks_tracked": 0, "history": []}
 
@@ -66,17 +69,21 @@ def compute_r_breakdown(profile_id, db: Session) -> dict:
     }
 
 
-def is_new_user(profile_id, db: Session) -> bool:
-    return (
-        db.query(models.RiderPerformanceHistory)
+async def is_new_user(profile_id, db: AsyncSession) -> bool:
+    result = await db.execute(
+        select(func.count(models.RiderPerformanceHistory.history_id))
         .filter(models.RiderPerformanceHistory.profile_id == profile_id)
-        .count()
-    ) < 2
+    )
+    count = result.scalar()
+    return count < 2
 
 
-def _infer_lifestyle_features(profile_id, db: Session) -> tuple[int, float, int]:
+async def _infer_lifestyle_features(profile_id, db: AsyncSession) -> tuple[int, float, int]:
     """Helper to derive ML lifestyle inputs from DB rider profile."""
-    rider = db.query(models.RiderProfile).filter(models.RiderProfile.profile_id == profile_id).first()
+    result = await db.execute(
+        select(models.RiderProfile).filter(models.RiderProfile.profile_id == profile_id)
+    )
+    rider = result.scalars().first()
     
     # Defaults
     shift_pref = 1
@@ -86,7 +93,9 @@ def _infer_lifestyle_features(profile_id, db: Session) -> tuple[int, float, int]
     if rider:
         # Infer experience
         if rider.created_at:
-            delta = datetime.now(timezone.utc) - rider.created_at
+            dt_now = datetime.now(timezone.utc)
+            dt_created = rider.created_at.replace(tzinfo=timezone.utc) if rider.created_at.tzinfo is None else rider.created_at
+            delta = dt_now - dt_created
             exp_months = max(1, int(delta.days / 30))
         
         # Infer shift and hours
@@ -111,12 +120,12 @@ def _infer_lifestyle_features(profile_id, db: Session) -> tuple[int, float, int]
     return shift_pref, avg_hours, exp_months
 
 
-def compute_coverage_and_premium(
+async def compute_coverage_and_premium(
     city: models.CityBenchmark,
     zone: models.GeoZone | None,
     profile_id,
     is_new: bool,
-    db: Session,
+    db: AsyncSession,
 ) -> tuple[float, float, float]:
     """
     ML-driven premium and coverage engine.
@@ -143,11 +152,12 @@ def compute_coverage_and_premium(
         return coverage, premium, weekly_cap
 
     # Extract lifestyle ML inputs
-    shift_preference, avg_daily_hours, experience_months = _infer_lifestyle_features(profile_id, db)
+    shift_preference, avg_daily_hours, experience_months = await _infer_lifestyle_features(profile_id, db)
     weather_severity = 0.5  # Standard baseline for prediction mapping
     
     # ML Engine strictly predicts the raw probabilities (TU, DE, CR)
-    pred_tu, pred_de, pred_cr = predict_rider_metrics(
+    pred_tu, pred_de, pred_cr = await asyncio.to_thread(
+        predict_rider_metrics,
         shift_preference=shift_preference,
         zone_risk_index=risk_multi,
         avg_daily_hours=avg_daily_hours,

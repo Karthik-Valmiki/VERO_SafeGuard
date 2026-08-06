@@ -192,121 +192,130 @@ def _run_migrations(db: Session) -> None:
 
 
 def _seed_cities(db: Session) -> None:
-    if db.query(models.CityBenchmark).first():
-        return  # already seeded
-    db.add_all(
-        [
-            models.CityBenchmark(
-                city_name=name,
-                baseline_weekly_income=income,
-                baseline_active_hours=hours,
-                default_risk_multiplier=risk,
-            )
-            for name, income, hours, risk in CITIES
-        ]
-    )
-    db.commit()
+    try:
+        if db.query(models.CityBenchmark).first():
+            return  # already seeded
+        db.add_all(
+            [
+                models.CityBenchmark(
+                    city_name=name,
+                    baseline_weekly_income=income,
+                    baseline_active_hours=hours,
+                    default_risk_multiplier=risk,
+                )
+                for name, income, hours, risk in CITIES
+            ]
+        )
+        db.commit()
+    except Exception as e:
+        db.rollback()
 
 
 def _seed_zones(db: Session) -> None:
-    for zone_name, city_name, risk in ZONES:
-        city = db.query(models.CityBenchmark).filter_by(city_name=city_name).first()
-        if not city:
-            continue
-        exists = (
-            db.query(models.GeoZone)
-            .filter_by(city_id=city.city_id, zone_name=zone_name)
-            .first()
-        )
-        if not exists:
-            db.add(
-                models.GeoZone(
-                    city_id=city.city_id,
-                    zone_name=zone_name,
-                    base_risk_multiplier=risk,
-                )
+    try:
+        for zone_name, city_name, risk in ZONES:
+            city = db.query(models.CityBenchmark).filter_by(city_name=city_name).first()
+            if not city:
+                continue
+            exists = (
+                db.query(models.GeoZone)
+                .filter_by(city_id=city.city_id, zone_name=zone_name)
+                .first()
             )
-    db.commit()
+            if not exists:
+                db.add(
+                    models.GeoZone(
+                        city_id=city.city_id,
+                        zone_name=zone_name,
+                        base_risk_multiplier=risk,
+                    )
+                )
+        db.commit()
+    except Exception as e:
+        db.rollback()
 
 
 def _seed_demo_riders(db: Session) -> None:
-    for rd in DEMO_RIDERS:
-        if db.query(models.RiderProfile).filter_by(phone_number=rd["phone"]).first():
-            continue  # already exists
+    try:
+        for rd in DEMO_RIDERS:
+            if db.query(models.RiderProfile).filter_by(phone_number=rd["phone"]).first():
+                continue  # already exists
 
-        city = db.query(models.CityBenchmark).filter_by(city_name=rd["city"]).first()
-        if not city:
-            continue
+            city = db.query(models.CityBenchmark).filter_by(city_name=rd["city"]).first()
+            if not city:
+                continue
 
-        zone = (
-            db.query(models.GeoZone)
-            .filter_by(city_id=city.city_id, zone_name=rd["zone"])
-            .first()
-        )
-        if not zone:
-            zone = db.query(models.GeoZone).filter_by(city_id=city.city_id).first()
-
-        now = datetime.now(timezone.utc)
-        latest = rd["history"][0]
-        r_val = _r(latest["tu"], latest["de"], latest["cr"])
-        rider = models.RiderProfile(
-            full_name=rd["name"],
-            phone_number=rd["phone"],
-            hashed_password=_hash(DEMO_PASSWORD),
-            platform=rd["platform"],
-            city_id=city.city_id,
-            shift_hours=rd["shift"],
-            upi_id=rd["upi"],
-            reliability_score=r_val,
-            is_verified=True,
-            # DPDP 2023 — demo riders are pre-seeded as fully consented
-            consent_records={
-                "gps_zone":    True,
-                "gps_claims":  True,
-                "gps_oracle":  True,
-                "dsa_data":    True,
-                "dsa_read":    True,
-                "upi_kyc":     True,
-                "upi_consent": True,
-                "consented_at": now.isoformat(),
-                "mode":        "SEEDED",
-            },
-        )
-        db.add(rider)
-        db.flush()
-
-        db.add(
-            models.RiderZone(
-                profile_id=rider.profile_id,
-                zone_id=zone.zone_id,
-                is_primary=True,
+            zone = (
+                db.query(models.GeoZone)
+                .filter_by(city_id=city.city_id, zone_name=rd["zone"])
+                .first()
             )
-        )
+            if not zone:
+                zone = db.query(models.GeoZone).filter_by(city_id=city.city_id).first()
 
-        # Mark OTP used so login works without OTP flow
-        db.add(
-            models.OtpStore(
+            now = datetime.now(timezone.utc)
+            latest = rd["history"][0]
+            r_val = _r(latest["tu"], latest["de"], latest["cr"])
+            rider = models.RiderProfile(
+                full_name=rd["name"],
                 phone_number=rd["phone"],
-                otp_code="000000",
-                expires_at=datetime.now(timezone.utc),
-                is_used=True,
+                hashed_password=_hash(DEMO_PASSWORD),
+                platform=rd["platform"],
+                city_id=city.city_id,
+                shift_hours=rd["shift"],
+                upi_id=rd["upi"],
+                reliability_score=r_val,
+                is_verified=True,
+                # DPDP 2023 — demo riders are pre-seeded as fully consented
+                consent_records={
+                    "gps_zone":    True,
+                    "gps_claims":  True,
+                    "gps_oracle":  True,
+                    "dsa_data":    True,
+                    "dsa_read":    True,
+                    "upi_kyc":     True,
+                    "upi_consent": True,
+                    "consented_at": now.isoformat(),
+                    "mode":        "SEEDED",
+                },
             )
-        )
+            db.add(rider)
+            db.flush()
 
-        for w in rd["history"]:
-            tu, de, cr = w["tu"], w["de"], w["cr"]
             db.add(
-                models.RiderPerformanceHistory(
+                models.RiderZone(
                     profile_id=rider.profile_id,
-                    week_start_date=_week(w["offset"]),
-                    time_utilization=tu,
-                    delivery_efficiency=de,
-                    completion_rate=cr,
-                    final_r_score=_r(tu, de, cr),
+                    zone_id=zone.zone_id,
+                    is_primary=True,
                 )
             )
 
-        db.commit()
+            # Mark OTP used so login works without OTP flow
+            db.add(
+                models.OtpStore(
+                    phone_number=rd["phone"],
+                    otp_code="000000",
+                    expires_at=datetime.now(timezone.utc),
+                    is_used=True,
+                )
+            )
+
+            for w in rd["history"]:
+                tu, de, cr = w["tu"], w["de"], w["cr"]
+                db.add(
+                    models.RiderPerformanceHistory(
+                        profile_id=rider.profile_id,
+                        week_start_date=_week(w["offset"]),
+                        time_utilization=tu,
+                        delivery_efficiency=de,
+                        completion_rate=cr,
+                        final_r_score=_r(tu, de, cr),
+                    )
+                )
+
+            db.commit()
+    except Exception as e:
+        db.rollback()
 
 
 def _seed_mass_scale(db: Session, target_users: int = 8000) -> None:

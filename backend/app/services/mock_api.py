@@ -22,7 +22,10 @@ PIPELINE ARCHITECTURE:
 
 import random
 import math
-import requests
+import httpx
+import urllib.parse
+
+_client = httpx.AsyncClient(timeout=5.0)
 from datetime import datetime, timezone, timedelta
 import logging
 
@@ -127,7 +130,7 @@ def _zone_meta(zone_id: int) -> dict:
 #  WEATHER  —  Open-Meteo (real API, no key)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def fetch_weather(zone_id: int) -> dict:
+async def fetch_weather(zone_id: int) -> dict:
     """
     Fetches REAL weather data from Open-Meteo API (api.open-meteo.com).
     Fields retrieved: temperature_2m, windspeed_10m, precipitation,
@@ -164,7 +167,7 @@ def fetch_weather(zone_id: int) -> dict:
             f"relativehumidity_2m,surface_pressure,weathercode,visibility"
             f"&timezone=Asia%2FKolkata"
         )
-        resp = requests.get(url, timeout=4)
+        resp = await _client.get(url, timeout=4)
         if resp.status_code == 200:
             data = resp.json()
             cur  = data.get("current", {})
@@ -239,7 +242,7 @@ def fetch_weather(zone_id: int) -> dict:
 #  AQI  —  Open-Meteo Air Quality API (real, no key)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def fetch_aqi(zone_id: int) -> dict:
+async def fetch_aqi(zone_id: int) -> dict:
     """
     Fetches REAL AQI data from Open-Meteo Air Quality API.
     Fields: european_aqi, us_aqi, pm2_5, pm10, nitrogen_dioxide, ozone.
@@ -269,7 +272,7 @@ def fetch_aqi(zone_id: int) -> dict:
             f"&current=european_aqi,us_aqi,pm2_5,pm10,nitrogen_dioxide,ozone"
             f"&timezone=Asia%2FKolkata"
         )
-        resp = requests.get(url, timeout=4)
+        resp = await _client.get(url, timeout=4)
         if resp.status_code == 200:
             data = resp.json()
             cur  = data.get("current", {})
@@ -347,7 +350,7 @@ def fetch_aqi(zone_id: int) -> dict:
 #  PLATFORM BLACKOUT  —  enriched simulation (clearly labelled)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def fetch_platform_status(platform: str) -> dict:
+async def fetch_platform_status(platform: str) -> dict:
     """
     Platform uptime simulation.
     DownDetector has no free public API, so this uses a realistic
@@ -404,7 +407,7 @@ _SOCIAL_SIGNALS = {
     8:  {"zone": "Bandra",         "city": "Mumbai",   "event": "Mumbai Bandh",          "base_confidence": 78, "restaurant_closure_base": 81},
 }
 
-def _gdelt_fetch(city: str) -> list[dict]:
+async def _gdelt_fetch(city: str) -> list[dict]:
     """
     Queries GDELT Project v2 DOC API for recent bandh/curfew/shutdown
     news in the specified city. Returns list of article dicts.
@@ -414,10 +417,10 @@ def _gdelt_fetch(city: str) -> list[dict]:
         query = f'(bandh OR curfew OR shutdown OR "road block") {city} India'
         url = (
             "https://api.gdeltproject.org/api/v2/doc/doc"
-            f"?query={requests.utils.quote(query)}"
+            f"?query={urllib.parse.quote(query)}"
             "&mode=artlist&format=json&maxrecords=10&timespan=7d"
         )
-        resp = requests.get(url, timeout=5)
+        resp = await _client.get(url, timeout=5)
         if resp.status_code == 200 and resp.text.strip():
             data = resp.json()
             articles = data.get("articles", [])
@@ -436,7 +439,7 @@ def _gdelt_fetch(city: str) -> list[dict]:
     return []
 
 
-def fetch_social_signals(zone_id: int) -> dict:
+async def fetch_social_signals(zone_id: int) -> dict:
     """
     Social disruption oracle.
     Primary: GDELT Project live news scan for city.
@@ -457,7 +460,7 @@ def fetch_social_signals(zone_id: int) -> dict:
     closure    = int(_noise(base_closure, 0.05))
 
     # ── Attempt GDELT real news scan ─────────────────────────────────────────
-    gdelt_articles = _gdelt_fetch(city)
+    gdelt_articles = await _gdelt_fetch(city)
     api_ok = len(gdelt_articles) > 0
 
     if api_ok:

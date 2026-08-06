@@ -5,6 +5,8 @@ uvicorn>=0.27.1
 # Database
 sqlalchemy>=2.0.27
 psycopg2-binary>=2.9.9 
+asyncpg>=0.29.0
+redis[asyncio]>=5.0.0
 
 # Security & Logic
 python-jose[cryptography]>=3.3.0
