@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 from ..core.config import settings
 
 # Sync engine for startup migrations/seeding and background threads
-sync_db_url = settings.DATABASE_URL.replace("+asyncpg", "")
+sync_db_url = settings.DATABASE_URL.replace("+asyncpg", "+psycopg2") if "+asyncpg" in settings.DATABASE_URL else settings.DATABASE_URL
 sync_engine = create_engine(sync_db_url, pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=sync_engine)
 
