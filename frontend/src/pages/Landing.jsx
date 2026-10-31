@@ -1,5 +1,5 @@
 import { useNavigate, Link } from "react-router-dom"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { Shield, CloudRain, Wifi, AlertTriangle, ArrowRight } from "lucide-react"
 
 // ── Typewriter hook ──────────────────────────────────────────────────────────
@@ -7,7 +7,7 @@ const PHRASES = [
   "you still get paid.",
   "VERO covers you.",
   "money hits your UPI.",
-  "no forms. no waiting.",
+  "no forms, no waiting.",
 ]
 
 function useTypewriter(phrases, speed = 60, pause = 1800) {
@@ -38,17 +38,17 @@ function useTypewriter(phrases, speed = 60, pause = 1800) {
 }
 
 const TRIGGERS = [
-  { icon: CloudRain, label: "Heavy Rain", desc: "Roads unsafe. Orders dry up. You lose hours.", color: "text-blue-400", border: "border-blue-500/20" },
-  { icon: AlertTriangle, label: "Toxic Air (AQI)", desc: "Every breath hurts. Delivery speed collapses.", color: "text-orange-400", border: "border-orange-500/20" },
-  { icon: Wifi, label: "App Outage", desc: "Swiggy or Zomato down at 8pm. Zero orders possible.", color: "text-indigo-400", border: "border-indigo-500/20" },
-  { icon: Shield, label: "Bandh & Shutdown", desc: "Announced overnight. Every restaurant shuts.", color: "text-rose-400", border: "border-rose-500/20" },
+  { icon: CloudRain, label: "Heavy rain", desc: "Roads unsafe. Orders dry up. You lose hours." },
+  { icon: AlertTriangle, label: "Toxic air (AQI)", desc: "Unhealthy conditions. Delivery pace slows to a crawl." },
+  { icon: Wifi, label: "App outage", desc: "Swiggy or Zomato down at peak dinner. Zero incoming orders." },
+  { icon: Shield, label: "Bandh & shutdown", desc: "Local commercial curfew. Restaurants shutter doors." },
 ]
 
 const HOW_STEPS = [
-  { n: "1", title: "Sign up in 2 min", desc: "Phone OTP. Pick your city and platform." },
-  { n: "2", title: "Pay ₹50–90 / week", desc: "Less than a meal. Priced to your zone's actual risk." },
-  { n: "3", title: "Ride like normal", desc: "We watch for disruptions 24/7. You do nothing." },
-  { n: "4", title: "Money hits your UPI", desc: "Disruption confirmed → payout every 30 min. No claim. No call." },
+  { n: "01", title: "Sign up in 2 minutes", desc: "Phone OTP verification. Select your city and delivery platform." },
+  { n: "02", title: "Pay ₹50–90 / week", desc: "Calibrated directly to your delivery zone's real-time risk profile." },
+  { n: "03", title: "Ride normally", desc: "Continuous automated monitoring of environmental and platform disruption." },
+  { n: "04", title: "Automated UPI credit", desc: "Disruption verified → automated payouts every 30 minutes without filing a claim." },
 ]
 
 export default function Landing() {
@@ -65,99 +65,92 @@ export default function Landing() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-dark-900 text-white overflow-x-hidden relative">
-      {/* Grid bg */}
-      <div className="absolute inset-0 z-0 bg-[linear-gradient(to_right,#80808010_1px,transparent_1px),linear-gradient(to_bottom,#80808010_1px,transparent_1px)] bg-[size:24px_24px] [mask-image:radial-gradient(ellipse_80%_60%_at_50%_0%,#000_60%,transparent_100%)] pointer-events-none" />
-      {/* Purple glow top */}
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-72 h-72 bg-brand-600/20 blur-[80px] rounded-full pointer-events-none" />
-
+    <div className="min-h-screen bg-ink-900 text-ink-100 overflow-x-hidden relative flex flex-col">
       {/* ── HERO ── */}
-      <section className="relative z-10 flex flex-col items-center justify-center min-h-[88vh] px-6 text-center">
-        {/* pill */}
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-brand-500/30 bg-brand-500/10 text-brand-400 text-xs font-medium mb-6 animate-fade-in">
-          <span className="w-1.5 h-1.5 rounded-full bg-brand-400 animate-pulse" />
+      <section className="relative z-10 flex flex-col items-center justify-center min-h-[85vh] px-6 text-center max-w-lg mx-auto w-full pt-12 pb-8">
+        <p className="text-xs font-medium text-ink-400 mb-4 animate-fade-in">
           For Zomato &amp; Swiggy riders
-        </div>
+        </p>
 
-        {/* Big headline */}
-        <h1 className="font-display text-4xl font-black leading-[1.1] tracking-tight mb-3 animate-fade-up">
+        {/* Headline */}
+        <h1 className="font-display text-4xl sm:text-5xl font-semibold leading-[1.15] tracking-tight mb-3 animate-fade-up">
           Bad day on the road?
         </h1>
 
-        {/* Typewriter line */}
-        <p className="text-xl font-semibold text-brand-400 mb-1 animate-fade-up min-h-[28px]" style={{ animationDelay: "0.1s" }}>
-          {typed}
-          <span className="inline-block w-0.5 h-[0.9em] bg-brand-500 ml-1 align-middle animate-pulse" />
-        </p>
+        {/* Dynamic line */}
+        <div className="text-xl sm:text-2xl font-medium text-accent-400 mb-3 min-h-[32px] flex items-center justify-center">
+          <span>{typed}</span>
+          <span className="inline-block w-0.5 h-5 bg-accent-500 ml-1.5 opacity-80" />
+        </div>
 
-        <p className="text-gray-400 text-sm max-w-[280px] leading-relaxed mb-8 animate-fade-up" style={{ animationDelay: "0.2s" }}>
-          VERO pays instantly. No forms. No waiting.
+        <p className="text-ink-400 text-sm max-w-[320px] leading-relaxed mb-8">
+          Automated income protection. Direct UPI compensation when disruptions stop work.
         </p>
 
         {/* CTAs */}
-        <div className="flex flex-col gap-3 w-full max-w-xs animate-fade-up" style={{ animationDelay: "0.3s" }}>
+        <div className="flex flex-col gap-3 w-full max-w-xs">
           <button
             onClick={() => navigate("/register")}
-            className="flex items-center justify-center gap-2 w-full py-3.5 bg-brand-600 hover:bg-brand-500 text-white font-semibold rounded-xl text-sm transition-all shadow-[0_0_24px_rgba(139,92,246,0.35)] active:scale-[0.98]"
+            className="btn-primary"
           >
-            Get covered — ₹50/week
+            <span>Get covered — from ₹50/wk</span>
             <ArrowRight size={15} />
           </button>
           <Link
             to="/login"
-            className="flex items-center justify-center w-full py-3.5 border border-dark-600 bg-dark-800/60 hover:bg-dark-700 text-gray-300 hover:text-white font-medium rounded-xl text-sm transition-all"
+            className="btn-ghost"
           >
             Log in to my account
           </Link>
         </div>
 
-        {/* trust line */}
-        <p className="mt-6 text-xs text-gray-600 animate-fade-up" style={{ animationDelay: "0.4s" }}>
-          Weekly plan · Cancel anytime · Works on Zomato &amp; Swiggy
+        {/* Trust metadata */}
+        <p className="mt-8 text-xs text-ink-400">
+          Weekly policy · Zero forms · Instant UPI settlement
         </p>
       </section>
 
       {/* ── WHAT WE COVER ── */}
-      <section className="px-5 pb-8 max-w-md mx-auto">
-        <h2 className="text-center text-xs font-bold uppercase tracking-widest text-gray-500 mb-4 reveal opacity-0">
-          What we cover
+      <section className="px-5 pb-12 max-w-md mx-auto w-full">
+        <h2 className="text-xs font-medium text-ink-400 mb-3 text-center">
+          Covered disruptions
         </h2>
-        <div className="grid grid-cols-2 gap-2.5">
-          {TRIGGERS.map(({ icon: Icon, label, desc, color, border }, i) => (
+        <div className="grid grid-cols-2 gap-3">
+          {TRIGGERS.map(({ icon: Icon, label, desc }, i) => (
             <div
               key={label}
-              className={`bg-dark-800/70 border ${border} rounded-2xl p-4 reveal opacity-0`}
-              style={{ transitionDelay: `${i * 70}ms` }}
+              className="bg-ink-800 border border-ink-600 rounded-2xl p-4 reveal"
+              style={{ transitionDelay: `${i * 60}ms` }}
             >
-              <Icon size={18} className={`${color} mb-2`} />
-              <p className="text-white text-xs font-semibold mb-1">{label}</p>
-              <p className="text-gray-500 text-[11px] leading-relaxed">{desc}</p>
+              <Icon size={18} className="text-ink-300 mb-2.5" />
+              <p className="text-ink-100 text-xs font-semibold mb-1">{label}</p>
+              <p className="text-ink-400 text-[11px] leading-relaxed">{desc}</p>
             </div>
           ))}
         </div>
       </section>
 
       {/* ── HOW IT WORKS ── */}
-      <section className="px-5 pb-10 max-w-md mx-auto">
-        <h2 className="text-center text-xs font-bold uppercase tracking-widest text-gray-500 mb-4 reveal opacity-0">
+      <section className="px-5 pb-12 max-w-md mx-auto w-full">
+        <h2 className="text-xs font-medium text-ink-400 mb-4 text-center">
           How it works
         </h2>
         <div className="relative">
-          {/* vertical line */}
-          <div className="absolute left-5 top-3 bottom-3 w-px bg-dark-600" />
+          {/* subtle line */}
+          <div className="absolute left-5 top-4 bottom-4 w-px bg-ink-600" />
           <div className="space-y-4">
             {HOW_STEPS.map(({ n, title, desc }, i) => (
               <div
                 key={n}
-                className="flex items-start gap-4 reveal opacity-0"
-                style={{ transitionDelay: `${i * 80}ms` }}
+                className="flex items-start gap-4 reveal"
+                style={{ transitionDelay: `${i * 60}ms` }}
               >
-                <div className="w-10 h-10 shrink-0 rounded-full bg-dark-800 border border-brand-500/30 flex items-center justify-center z-10">
-                  <span className="text-brand-400 font-bold text-sm">{n}</span>
+                <div className="w-10 h-10 shrink-0 rounded-xl bg-ink-800 border border-ink-600 flex items-center justify-center z-10">
+                  <span className="text-accent-400 font-mono font-medium text-xs">{n}</span>
                 </div>
-                <div className="pt-2">
-                  <p className="text-white text-sm font-semibold">{title}</p>
-                  <p className="text-gray-500 text-xs mt-0.5 leading-relaxed">{desc}</p>
+                <div className="pt-1.5">
+                  <p className="text-ink-100 text-sm font-medium">{title}</p>
+                  <p className="text-ink-400 text-xs mt-0.5 leading-relaxed">{desc}</p>
                 </div>
               </div>
             ))}
@@ -166,29 +159,32 @@ export default function Landing() {
       </section>
 
       {/* ── BOTTOM CTA ── */}
-      <section className="px-5 pb-12 max-w-md mx-auto reveal opacity-0">
-        <div className="bg-gradient-to-br from-brand-600/20 to-dark-800 border border-brand-500/20 rounded-2xl p-6 text-center">
-          <p className="text-white font-bold text-base mb-1">Start for ₹50 this week</p>
-          <p className="text-gray-400 text-xs mb-4">Join riders already protected across Delhi, Mumbai &amp; Bengaluru</p>
+      <section className="px-5 pb-14 max-w-md mx-auto w-full reveal">
+        <div className="bg-ink-800 border border-ink-600 rounded-2xl p-6 text-center">
+          <p className="text-ink-100 font-semibold text-base mb-1">Start for ₹50 this week</p>
+          <p className="text-ink-400 text-xs mb-5">Parametric coverage active across major metro delivery zones</p>
           <button
             onClick={() => navigate("/register")}
-            className="w-full py-3 bg-brand-600 hover:bg-brand-500 text-white font-semibold rounded-xl text-sm transition-all active:scale-[0.98]"
+            className="btn-primary"
           >
-            Create free account →
+            <span>Create account</span>
+            <ArrowRight size={15} />
           </button>
         </div>
       </section>
 
-      <footer className="border-t border-dark-700/50 py-4 text-center text-gray-700 text-xs">
-        <span className="flex items-center justify-center gap-1.5 text-gray-500 font-semibold mb-0.5">
-          <Shield size={12} className="text-brand-500" /> VERO
-        </span>
-        Parametric income protection for India's delivery workforce
+      {/* ── FOOTER ── */}
+      <footer className="border-t border-ink-600/60 py-6 text-center text-ink-400 text-xs mt-auto">
+        <div className="flex items-center justify-center gap-1.5 font-medium text-ink-300 mb-1">
+          <Shield size={14} className="text-accent-500" />
+          <span>VERO SafeGuard</span>
+        </div>
+        <p className="text-ink-400 text-[11px]">Parametric income protection for on-demand riders</p>
       </footer>
 
       <style>{`
-        .reveal { opacity:0; transform:translateY(20px); transition: opacity 0.6s cubic-bezier(0.16,1,0.3,1), transform 0.6s cubic-bezier(0.16,1,0.3,1); }
-        .revealed { opacity:1 !important; transform:translateY(0) !important; }
+        .reveal { opacity: 0; transform: translateY(12px); transition: opacity 0.4s ease, transform 0.4s ease; }
+        .revealed { opacity: 1 !important; transform: translateY(0) !important; }
       `}</style>
     </div>
   )

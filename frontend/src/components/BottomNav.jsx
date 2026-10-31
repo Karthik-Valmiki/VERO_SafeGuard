@@ -17,7 +17,7 @@ export default function BottomNav() {
   if (hideOn.includes(location.pathname)) return null
 
   return (
-    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-32px)] bg-dark-900/60 backdrop-blur-2xl border border-white/8 rounded-3xl flex items-center justify-around px-1 py-1 shadow-[0_20px_50px_rgba(0,0,0,0.6)] z-50 ring-1 ring-white/5">
+    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-[calc(100%-32px)] max-w-md bg-ink-950/95 backdrop-blur-md border border-ink-600 rounded-2xl flex items-center justify-around px-2 py-1.5 shadow-2xl shadow-black/80 z-50">
       {navItems.map((item) => {
         const active = location.pathname === item.path
         const Icon = item.icon
@@ -25,18 +25,14 @@ export default function BottomNav() {
           <button
             key={item.label}
             onClick={() => navigate(item.path)}
-            className={`flex flex-col items-center justify-center gap-1 py-2.5 px-4 rounded-2xl transition-all duration-300 ${
-              active ? 'text-brand-400 bg-brand-500/10' : 'text-gray-500 hover:text-gray-300'
+            className={`flex flex-col items-center justify-center gap-1 py-1.5 px-3 rounded-xl transition-colors duration-150 ${
+              active ? 'text-accent-400' : 'text-ink-400 hover:text-ink-200'
             }`}
           >
-            <div className={`relative transition-transform duration-300 ${active ? 'scale-110' : ''}`}>
-              {active && <div className="absolute -inset-2 bg-brand-500/15 blur-md rounded-full -z-10" />}
-              <Icon size={20} strokeWidth={active ? 2.5 : 2} className="relative z-10" />
-            </div>
-            <span className={`text-[9px] font-bold tracking-widest uppercase transition-all ${active ? 'opacity-100' : 'opacity-50'}`}>
+            <Icon size={18} strokeWidth={active ? 2.2 : 1.7} />
+            <span className="text-[11px] font-medium leading-none">
               {item.label}
             </span>
-            <div className={`w-1 h-1 rounded-full bg-brand-400 transition-all duration-300 ${active ? 'opacity-100 scale-100' : 'opacity-0 scale-0'}`} />
           </button>
         )
       })}

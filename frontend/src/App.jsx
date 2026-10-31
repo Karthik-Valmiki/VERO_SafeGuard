@@ -45,6 +45,7 @@ export default function App() {
                   <Route path="/policy"        element={<PrivateRoute><Policy /></PrivateRoute>} />
                   <Route path="/claims"        element={<PrivateRoute><Claims /></PrivateRoute>} />
                   <Route path="/notifications" element={<PrivateRoute><Notifications /></PrivateRoute>} />
+                  <Route path="/simulator"     element={<Simulator />} />
                   <Route path="/profile"       element={<PrivateRoute><Profile /></PrivateRoute>} />
                   <Route path="*"              element={<Navigate to="/" replace />} />
                 </Routes>

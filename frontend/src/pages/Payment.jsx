@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { getQuote, getMyDashboard, createRazorpayOrder, verifyRazorpayPayment, purchasePolicy } from "../api"
-import { Shield, CheckCircle, Loader2, Info, Zap, MapPin } from "lucide-react"
+import { Shield, CheckCircle, Loader2, Info, Zap, MapPin, ArrowLeft } from "lucide-react"
 
 function loadRazorpayScript() {
   return new Promise((resolve) => {
@@ -69,7 +69,7 @@ export default function Payment() {
 
       const loaded = await loadRazorpayScript()
       if (!loaded) {
-        setError("Razorpay failed to load. Check your internet connection.")
+        setError("Razorpay failed to load. Check your network connection.")
         setStatus("idle")
         return
       }
@@ -80,10 +80,10 @@ export default function Payment() {
           amount: order.amount,
           currency: order.currency,
           name: "VERO SafeGuard",
-          description: `Weekly Income Protection — ${order.coverage_pct}% coverage · ${order.rider_name}`,
+          description: `Weekly coverage — ${order.coverage_pct}% · ${order.rider_name}`,
           order_id: order.order_id,
           prefill: { name: order.rider_name },
-          theme: { color: "#7c3aed" },
+          theme: { color: "#e8a030" },
           modal: { ondismiss: () => reject(new Error("dismissed")) },
           handler: async (response) => {
             try {
@@ -105,7 +105,7 @@ export default function Payment() {
       if (e.message === "dismissed") {
         setStatus("idle")
       } else {
-        setError(e.response?.data?.detail || "Payment failed. Please try again.")
+        setError(e.response?.data?.detail || "Payment transaction could not be completed.")
         setStatus("idle")
       }
     }
@@ -113,32 +113,32 @@ export default function Payment() {
 
   if (loading) {
     return (
-      <div className="h-full flex items-center justify-center bg-dark-900">
-        <Loader2 className="animate-spin text-brand-500" size={32} />
+      <div className="h-full flex items-center justify-center bg-ink-900">
+        <Loader2 className="animate-spin text-ink-400" size={28} />
       </div>
     )
   }
 
+  // Activating / Success countdown state
   if (status === "success") {
     return (
-      <div className="h-full flex flex-col items-center justify-center p-6 bg-dark-900 overflow-hidden relative">
-        <div className="absolute inset-0 bg-brand-500/5 animate-pulse" />
-        <div className="z-10 flex flex-col items-center">
-          <div className="w-24 h-24 bg-brand-500/10 rounded-full flex items-center justify-center mb-8 relative">
-            <div className="absolute -inset-4 bg-brand-500/20 blur-2xl rounded-full animate-pulse" />
-            <div className="text-4xl font-display font-black text-brand-400 relative z-10">{countdown}s</div>
+      <div className="h-full flex flex-col items-center justify-center p-6 bg-ink-900 text-ink-100 relative">
+        <div className="w-full max-w-sm flex flex-col items-center text-center">
+          <div className="text-5xl font-mono font-semibold text-accent-400 mb-6">
+            {countdown}s
           </div>
-          <h1 className="text-3xl font-display font-bold text-white mb-2">Activating...</h1>
-          <p className="text-gray-400 text-center max-w-[280px] text-sm">
-            Payment confirmed. Your 7-day protection will be live shortly.
+          <h1 className="text-2xl font-semibold text-ink-100 mb-2">Activating policy</h1>
+          <p className="text-ink-400 text-xs max-w-[280px] leading-relaxed mb-6">
+            Payment verified. Your 7-day parametric protection will be live within this countdown.
           </p>
-          <div className="mt-8 flex items-center gap-3 px-6 py-3 rounded-full bg-brand-500/10 border border-brand-500/20 text-brand-400 text-xs font-bold uppercase tracking-widest">
-            <Loader2 className="animate-spin" size={14} />
-            System Verification
+
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-ink-800 border border-ink-600 text-xs text-ink-300">
+            <Loader2 className="animate-spin" size={13} />
+            <span>Telemetry synchronizing</span>
           </div>
-          <p className="mt-6 text-xs text-gray-500 text-center max-w-[300px]">
-            <span className="text-brand-400 font-semibold">Demo Mode:</span> Activating in {countdown}s<br />
-            <span className="text-gray-600">(Production: 24-hour fraud prevention window)</span>
+
+          <p className="mt-8 text-xs text-ink-400 max-w-[280px]">
+            Demo mode active: fast-track activation in {countdown}s.
           </p>
         </div>
       </div>
@@ -146,76 +146,79 @@ export default function Payment() {
   }
 
   return (
-    <div className="min-h-full bg-dark-900 flex flex-col text-white relative font-sans">
-      <div className="absolute inset-0 z-0 bg-[radial-gradient(circle_at_50%_-10%,#3b076444,transparent_60%)] pointer-events-none" />
-
-      <div className="relative z-10 px-6 pt-10 pb-4">
-        <div className="flex items-center gap-3 mb-1">
-          <div className="p-2.5 bg-brand-500/20 rounded-2xl border border-brand-500/30">
-            <Shield size={24} className="text-brand-400" />
-          </div>
-          <h1 className="font-display text-2xl font-black tracking-tight text-white">Confirm Coverage</h1>
+    <div className="min-h-full bg-ink-900 flex flex-col text-ink-100 relative">
+      {/* Header */}
+      <div className="px-5 pt-8 pb-3 border-b border-ink-600/70 bg-ink-950/95">
+        <button
+          onClick={() => navigate(-1)}
+          className="inline-flex items-center gap-1.5 text-xs text-ink-400 hover:text-ink-100 mb-3 transition-colors"
+        >
+          <ArrowLeft size={14} /> Back
+        </button>
+        <div className="flex items-center gap-2">
+          <Shield size={20} className="text-accent-500" />
+          <h1 className="text-xl font-semibold text-ink-100">Confirm policy purchase</h1>
         </div>
-        <p className="text-gray-500 text-xs pl-0.5 opacity-70">Zone-based premium · Secured by Razorpay</p>
+        <p className="text-xs text-ink-400 mt-1">Zone-calibrated premium · Powered by Razorpay</p>
       </div>
 
-      <div className="relative z-10 flex-1 px-6 pb-32 space-y-5 overflow-y-auto no-scrollbar pt-2">
+      <div className="flex-1 px-5 py-4 pb-24 space-y-4 overflow-y-auto max-w-md mx-auto w-full">
+        {/* Pricing card */}
+        <div className="card">
+          <div className="flex justify-between items-start mb-2">
+            <p className="text-xs text-ink-400">Weekly premium</p>
+            <div className="flex items-center gap-1 text-xs text-positive font-medium">
+              <MapPin size={11} />
+              {quote?.zone_name || "—"}
+            </div>
+          </div>
 
-        {/* Price card */}
-        <div className="card !p-0 overflow-hidden bg-gradient-to-br from-dark-800/80 to-dark-900 border-white/5 shadow-2xl">
-          <div className="p-6">
-            <div className="flex justify-between items-start mb-3">
-              <p className="text-[10px] text-gray-500 uppercase tracking-[0.2em] font-bold">Weekly Premium</p>
-              <div className="flex items-center gap-1 text-[11px] text-green-400 font-semibold">
-                <MapPin size={11} />
-                {quote?.zone_name || "—"}
-              </div>
+          <div className="flex items-baseline gap-1 my-3">
+            <span className="text-ink-400 text-xl font-mono">₹</span>
+            <span className="text-5xl font-mono font-semibold text-ink-100 tracking-tight">
+              {quote ? quote.premium : "--"}
+            </span>
+            <span className="text-ink-400 text-xs ml-1.5">/ week</span>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 py-3 border-t border-ink-600/60 my-2">
+            <div>
+              <p className="text-xs text-ink-400 mb-0.5">Cap</p>
+              <p className="text-base font-mono font-semibold text-ink-100">₹{quote?.weekly_cap || "0"}</p>
             </div>
-            <div className="flex items-baseline gap-1.5 mb-6">
-              <span className="text-gray-400 text-2xl font-display font-medium">₹</span>
-              <h2 className="text-6xl font-display font-black text-white tracking-tighter">
-                {quote ? quote.premium : "--"}
-              </h2>
-              <span className="text-gray-500 text-sm ml-1">/ week</span>
+            <div className="text-center">
+              <p className="text-xs text-ink-400 mb-0.5">Coverage</p>
+              <p className="text-base font-mono font-semibold text-accent-400">{quote?.coverage_pct}%</p>
             </div>
-            <div className="grid grid-cols-3 gap-3 py-4 border-t border-white/5">
-              <div className="space-y-1">
-                <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Cap</p>
-                <p className="text-lg font-display font-bold text-white">₹{quote?.weekly_cap || "0"}</p>
-              </div>
-              <div className="space-y-1 text-center">
-                <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Coverage</p>
-                <p className="text-lg font-display font-bold text-brand-400">{quote?.coverage_pct}%</p>
-              </div>
-              <div className="space-y-1 text-right">
-                <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Zone Risk</p>
-                <p className="text-lg font-display font-bold text-yellow-400">{quote?.zone_risk_multiplier?.toFixed(2)}×</p>
-              </div>
+            <div className="text-right">
+              <p className="text-xs text-ink-400 mb-0.5">Zone risk</p>
+              <p className="text-base font-mono font-semibold text-ink-100">{quote?.zone_risk_multiplier?.toFixed(2)}×</p>
             </div>
-            <div className="flex items-start gap-2 p-3 bg-brand-500/5 rounded-xl border border-brand-500/10 mt-1">
-              <Info size={13} className="text-brand-400 shrink-0 mt-0.5" />
-              <p className="text-[10px] text-gray-400 leading-tight">
-                Premium uses your <span className="text-white font-bold">zone's risk multiplier ({quote?.zone_risk_multiplier?.toFixed(2)}×)</span> — riders in lower-risk zones pay less for the same coverage.
-              </p>
-            </div>
+          </div>
+
+          <div className="flex items-start gap-2 pt-2 text-xs text-ink-400 border-t border-ink-600/60">
+            <Info size={13} className="text-accent-500 shrink-0 mt-0.5" />
+            <p className="leading-relaxed">
+              Premium based on your zone's risk multiplier ({quote?.zone_risk_multiplier?.toFixed(2)}×).
+            </p>
           </div>
         </div>
 
-        {/* What's covered */}
+        {/* Covered features */}
         <div className="space-y-2">
-          <h3 className="text-[10px] text-gray-500 uppercase tracking-widest font-bold px-1">What's covered</h3>
-          <div className="space-y-2.5 bg-dark-800/50 border border-white/5 rounded-2xl p-4">
+          <p className="text-xs font-medium text-ink-400 px-1">Included in coverage</p>
+          <div className="bg-ink-800 border border-ink-600 rounded-2xl p-4 space-y-3">
             {[
-              ["Automated Disruption Coverage", "Weather, AQI, platform outages, bandhs"],
-              ["Zero-Touch Claims", "No paperwork — payouts trigger automatically"],
-              ["Instant UPI Payouts", "Compensation sent to your UPI in 30-min intervals"],
-              ["7-Day Full Coverage", `168 hours · up to ₹${quote?.weekly_cap || "0"} weekly cap`],
+              ["Automated disruption coverage", "Severe rain, toxic AQI spikes, app blackouts, civic bandhs"],
+              ["Zero-touch claims", "No documentation — payouts trigger automatically"],
+              ["Instant UPI disbursements", "Transferred directly in 30-minute intervals"],
+              ["7-day active protection", `168 hours of coverage · up to ₹${quote?.weekly_cap || "0"} weekly cap`],
             ].map(([title, desc], i, arr) => (
-              <div key={title} className={`flex items-start gap-3 ${i < arr.length - 1 ? "pb-2.5 border-b border-white/5" : ""}`}>
-                <CheckCircle size={15} className="text-brand-400 mt-0.5 shrink-0" />
+              <div key={title} className={`flex items-start gap-2.5 ${i < arr.length - 1 ? "pb-3 border-b border-ink-600/50" : ""}`}>
+                <CheckCircle size={14} className="text-positive shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-white text-sm font-semibold">{title}</p>
-                  <p className="text-gray-400 text-xs mt-0.5">{desc}</p>
+                  <p className="text-xs font-medium text-ink-100">{title}</p>
+                  <p className="text-xs text-ink-400 mt-0.5">{desc}</p>
                 </div>
               </div>
             ))}
@@ -223,38 +226,36 @@ export default function Payment() {
         </div>
 
         {error && (
-          <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center gap-3">
-            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
-            <p className="text-red-400 text-xs font-semibold">{error}</p>
+          <div className="p-3 rounded-xl bg-negative/10 border border-negative/20 text-xs text-negative">
+            {error}
           </div>
         )}
 
-        <div className="pt-1">
+        <div className="pt-2">
           <button
             onClick={handlePay}
             disabled={status !== "idle" || !quote}
-            className="group relative w-full h-14 bg-brand-600 hover:bg-brand-500 disabled:bg-dark-800 text-white font-bold rounded-2xl transition-all duration-300 overflow-hidden active:scale-[0.98] shadow-[0_20px_50px_rgba(139,92,246,0.3)] disabled:shadow-none"
+            className="btn-primary py-3.5"
           >
-            <div className="flex items-center justify-center gap-2.5 relative z-10 uppercase tracking-widest text-sm">
-              {status === "paying" ? (
-                <><Loader2 className="animate-spin" size={18} /> Opening Razorpay...</>
-              ) : (
-                <><Zap size={18} /> Pay ₹{quote?.premium} via Razorpay</>
-              )}
-            </div>
+            {status === "paying" ? (
+              <>
+                <Loader2 className="animate-spin" size={16} />
+                <span>Processing...</span>
+              </>
+            ) : (
+              <>
+                <Zap size={16} />
+                <span>Pay ₹{quote?.premium} for 7 days</span>
+              </>
+            )}
           </button>
 
-          <div className="mt-4 flex flex-col items-center space-y-1.5 bg-brand-500/5 p-4 rounded-2xl border border-brand-500/10">
-            <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.2em] font-bold text-brand-400">
-              <Shield size={11} className="text-brand-500 animate-pulse" />
-              Instant 7-Day Protection
-            </div>
-            <p className="text-[10px] text-gray-400 text-center px-4 leading-relaxed">
-              Activates in <span className="text-white">20 seconds</span> (demo).
-              Production enforces a <span className="text-white">24-hour</span> fraud prevention window.
+          <div className="mt-4 p-3.5 bg-ink-800 border border-ink-600 rounded-xl space-y-1">
+            <p className="text-xs font-medium text-ink-300">
+              Demo test environment
             </p>
-            <p className="text-[10px] text-gray-600 text-center">
-              Test card: <span className="text-gray-400 font-mono">4111 1111 1111 1111</span> · any future expiry · any CVV
+            <p className="text-xs text-ink-400 leading-relaxed">
+              Mock checkout enabled. Card: <span className="font-mono text-ink-200">4111 1111 1111 1111</span> with any future expiry date and CVV.
             </p>
           </div>
         </div>

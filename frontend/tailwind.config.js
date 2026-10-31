@@ -9,43 +9,58 @@ export default {
         mono:    ["'JetBrains Mono'", "monospace"],
       },
       colors: {
+        // Refined amber accent (unslop direction: night-shift world, alerts & payouts)
+        accent: {
+          400: "#f0b84a",
+          500: "#e8a030",
+          600: "#c47d14",
+        },
+        // Alias brand to accent for backward compatibility during step-by-step unslopping
         brand: {
-          50:  "#f5f3ff",
-          100: "#ede9fe",
-          200: "#ddd6fe",
-          300: "#c4b5fd",
-          400: "#a78bfa",
-          500: "#8b5cf6", // Violet
-          600: "#7c3aed",
-          700: "#6d28d9",
+          50:  "#fffbeb",
+          100: "#fef3c7",
+          200: "#fde68a",
+          300: "#fcd34d",
+          400: "#f0b84a",
+          500: "#e8a030",
+          600: "#c47d14",
+          700: "#b45309",
+        },
+        // Ink ramp for surfaces (slate-tinted neutral, night shift)
+        ink: {
+          950: "#07080d", // deepest shell / nav
+          900: "#0b0d14", // page background
+          800: "#11141c", // card surface
+          700: "#1a1e28", // raised surface / input
+          600: "#252a38", // subtle border / hairline
+          500: "#374052", // muted border
+          400: "#6b7487", // muted text / icons
+          300: "#a3a9b8", // secondary text
+          100: "#eaedf5", // primary text
         },
         dark: {
-          900: "#09090b", // Nextjs/Stripe pitch black
-          800: "#18181b", // Deep zinc
-          700: "#27272a", // Zinc 800
-          600: "#3f3f46", // Border color
-          500: "#52525b",
-          400: "#71717a",
+          900: "#0b0d14", // aligned to ink-900
+          800: "#11141c", // aligned to ink-800
+          700: "#1a1e28", // aligned to ink-700
+          600: "#252a38", // aligned to ink-600
+          500: "#374052",
+          400: "#6b7487",
         },
+        positive: "#4cc38a",
+        negative: "#e5484d",
       },
       animation: {
-        "fade-up":    "fadeUp 0.6s cubic-bezier(0.16,1,0.3,1) forwards",
-        "fade-in":    "fadeIn 0.5s ease forwards",
-        "pulse-slow": "pulse 2.5s ease-in-out infinite",
-        "slide-in":   "slideIn 0.4s cubic-bezier(0.16,1,0.3,1) forwards",
+        "fade-up": "fadeUp 0.35s cubic-bezier(0.16,1,0.3,1) forwards",
+        "fade-in": "fadeIn 0.25s ease forwards",
       },
       keyframes: {
         fadeUp: {
-          "0%":   { opacity: 0, transform: "translateY(24px)" },
+          "0%":   { opacity: 0, transform: "translateY(12px)" },
           "100%": { opacity: 1, transform: "translateY(0)" },
         },
         fadeIn: {
           "0%":   { opacity: 0 },
           "100%": { opacity: 1 },
-        },
-        slideIn: {
-          "0%":   { opacity: 0, transform: "translateX(-12px)" },
-          "100%": { opacity: 1, transform: "translateX(0)" },
         },
       },
     },

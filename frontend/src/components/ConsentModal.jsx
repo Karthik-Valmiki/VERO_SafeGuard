@@ -1,132 +1,95 @@
-import { X, Shield, ExternalLink } from "lucide-react"
+import { X, Shield } from "lucide-react"
 
 /**
  * ConsentModal — DPDP 2023 Data Sharing Agreement bottom-sheet.
- * Triggered from step 3 (Platform DSA) via "Read full DSA →" link.
- * Tap outside or press "Close" to dismiss.
+ * Triggered from step 3 (Platform DSA) via "Read full agreement" link.
  */
 export default function ConsentModal({ platform, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
         onClick={onClose}
       />
 
       {/* Sheet */}
-      <div className="relative z-10 w-full max-h-[80vh] flex flex-col
-                      bg-[#0f0f0f] border-t border-white/8 rounded-t-3xl
-                      shadow-[0_-20px_60px_-10px_rgba(0,0,0,0.8)]">
-
+      <div className="relative z-10 w-full max-h-[80vh] flex flex-col bg-ink-900 border-t border-ink-600 rounded-t-2xl shadow-2xl">
         {/* Drag handle */}
         <div className="flex justify-center pt-3 pb-1 shrink-0">
-          <div className="w-10 h-1 bg-white/10 rounded-full" />
+          <div className="w-10 h-1 bg-ink-600 rounded-full" />
         </div>
 
         {/* Header */}
         <div className="flex items-start justify-between px-6 pt-2 pb-4 shrink-0">
           <div className="flex items-start gap-3">
-            <div className="p-2 bg-brand-500/10 rounded-xl mt-0.5">
-              <Shield size={16} className="text-brand-400" />
+            <div className="p-2 bg-ink-800 border border-ink-600 rounded-xl mt-0.5 text-accent-500">
+              <Shield size={16} />
             </div>
             <div>
-              <h3 className="text-base font-bold leading-tight">Data Sharing Agreement</h3>
-              <p className="text-[11px] text-gray-500 mt-0.5">
-                VERO × {platform} · DSA v1.0 · April 2026
+              <h3 className="text-base font-semibold leading-tight text-ink-100">Data sharing agreement</h3>
+              <p className="text-xs text-ink-400 mt-0.5">
+                VERO × {platform} · DPDP 2023 Compliant
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-xl hover:bg-white/5 transition-colors -mr-1"
-            aria-label="Close"
+            className="p-1.5 rounded-lg hover:bg-ink-800 transition-colors text-ink-400 hover:text-ink-100"
+            aria-label="Close modal"
           >
-            <X size={15} className="text-gray-500" />
+            <X size={16} />
           </button>
         </div>
 
-        <div className="h-px bg-white/5 mx-6" />
+        <div className="h-px bg-ink-600/70 mx-6" />
 
         {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5 custom-scrollbar">
-
-          <DsaSection number="1" title="Parties">
-            This agreement is between{" "}
-            <b className="text-gray-200">VERO Income Protection Platform</b> ("VERO")
-            and you — a registered delivery partner on{" "}
-            <b className="text-gray-200">{platform}</b> ("You").
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 text-xs text-ink-300 leading-relaxed custom-scrollbar">
+          <DsaSection number="1" title="Parties involved">
+            This agreement is between <b className="text-ink-100">VERO Income Protection Platform</b> ("VERO")
+            and the registered delivery rider on <b className="text-ink-100">{platform}</b> ("Rider").
           </DsaSection>
 
-          <DsaSection number="2" title="Data Shared by Platform">
+          <DsaSection number="2" title="Platform telemetry shared">
             <p className="mb-2">
-              {platform} shares the following data with VERO{" "}
-              <b className="text-gray-300">solely for parametric claim processing</b>:
+              {platform} shares the following telemetry with VERO <b className="text-ink-100">solely for parametric trigger validation</b>:
             </p>
             <ul className="space-y-1.5">
               {[
-                "Delivery activity status (online/offline) during registered shift hours",
-                "GPS zone presence data for trigger zone-match verification",
-                "Order completion count — aggregate only, no individual order detail",
+                "Delivery dispatch status (online/offline) during registered shift hours",
+                "GPS zone presence telemetry for trigger zone-matching verification",
+                "Aggregated order counts — zero individual order, customer, or restaurant data is collected",
               ].map((item, i) => (
-                <li key={i} className="flex items-start gap-2.5">
-                  <div className="w-1 h-1 rounded-full bg-brand-500/70 mt-2 shrink-0" />
+                <li key={i} className="flex items-start gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full bg-accent-500 mt-1.5 shrink-0" />
                   <span>{item}</span>
                 </li>
               ))}
             </ul>
           </DsaSection>
 
-          <DsaSection number="3" title="Purpose Limitation (DPDP 2023 §4)">
-            All shared data is used exclusively for: (a) verifying parametric trigger eligibility,
-            (b) fraud anomaly detection, and (c) generating your Reliability Score (R).
-            Data is <b className="text-gray-300">never sold</b> or shared with any third party
-            beyond IRDAI-licensed parametric oracles.
+          <DsaSection number="3" title="Purpose limitation (DPDP 2023 §4)">
+            Data collected is used strictly to verify parametric disruption eligibility and compute your Reliability Score (R). Data is never sold, transferred to third parties, or utilized for targeted advertising.
           </DsaSection>
 
-          <DsaSection number="4" title="Data Retention">
-            Delivery activity data is retained for{" "}
-            <b className="text-gray-200">90 days</b>.
-            R-score computation history is retained for{" "}
-            <b className="text-gray-200">2 years</b>{" "}
-            for premium personalisation. Full deletion can be requested at any time via
-            Settings → Data &amp; Privacy.
+          <DsaSection number="4" title="Retention schedule">
+            Shift delivery activity telemetry is retained for 90 days following conclusion of the policy period. Historical score computations are stored securely for premium customization.
           </DsaSection>
 
-          <DsaSection number="5" title="Your Rights (DPDP 2023 §12–14)">
-            <ul className="space-y-1.5">
-              {[
-                ["Right to access", "Request a copy of all data held about you"],
-                ["Right to correction", "Update any inaccurate profile data"],
-                ["Right to erasure", "Request deletion of all personal data"],
-                ["Right to withdraw consent", "Suspension applied within 24 hours; policy coverage paused until restored"],
-              ].map(([right, detail], i) => (
-                <li key={i} className="flex items-start gap-2.5">
-                  <div className="w-1 h-1 rounded-full bg-cyan-500/70 mt-2 shrink-0" />
-                  <span>
-                    <b className="text-gray-300">{right}</b> — {detail}
-                  </span>
-                </li>
-              ))}
-            </ul>
+          <DsaSection number="5" title="Data principal rights">
+            Under the Digital Personal Data Protection Act, 2023, you retain full rights to request summary reports of stored data, profile corrections, or complete erasure via account settings.
           </DsaSection>
 
-          <DsaSection number="6" title="Grievance Officer">
-            For data-related complaints contact:{" "}
-            <span className="text-brand-400 font-medium">privacy@vero-insurance.in</span>.{" "}
-            Response guaranteed within 30 days per DPDP 2023 §13(6).
+          <DsaSection number="6" title="Grievance contact">
+            DPDP Grievance Officer: <span className="text-accent-400 font-mono">privacy@vero-safeguard.in</span>.
           </DsaSection>
-
-          <p className="text-[10px] text-gray-600 pt-3 border-t border-white/5 leading-relaxed">
-            This DSA is governed by the Digital Personal Data Protection Act, 2023 (India)
-            and IRDAI Privacy Guidelines 2025. Effective April 2026.
-          </p>
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-white/5 shrink-0">
+        <div className="px-6 py-4 border-t border-ink-600/80 shrink-0">
           <button onClick={onClose} className="btn-primary">
-            Close &amp; Accept
+            I understand &amp; close
           </button>
         </div>
       </div>
@@ -134,15 +97,14 @@ export default function ConsentModal({ platform, onClose }) {
   )
 }
 
-/** Clean numbered section inside DSA */
 function DsaSection({ number, title, children }) {
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] font-bold text-brand-500/70">{number}</span>
-        <h4 className="text-xs font-bold text-white">{title}</h4>
-      </div>
-      <div className="text-[11px] text-gray-400 leading-relaxed pl-4">
+    <div className="space-y-1">
+      <h4 className="text-xs font-semibold text-ink-100 flex items-center gap-1.5">
+        <span className="text-accent-400 font-mono">{number}.</span>
+        <span>{title}</span>
+      </h4>
+      <div className="text-xs text-ink-400 leading-relaxed pl-3.5">
         {children}
       </div>
     </div>
