@@ -52,7 +52,7 @@ services:
     build:
       context: ./backend
       args:
-        CACHE_BUSTER: "172138"
+        CACHE_BUSTER: "172140"
     restart: unless-stopped
     environment:
       # Async URL for SQLAlchemy AsyncSession (request-time queries)
@@ -96,7 +96,7 @@ services:
         VITE_ADMIN_USER: ${VITE_ADMIN_USER}
         VITE_ADMIN_PASS: ${VITE_ADMIN_PASS}
         VITE_ADMIN_API_KEY: ${VITE_ADMIN_API_KEY}
-        CACHE_BUSTER: "172138"
+        CACHE_BUSTER: "172140"
       cache_from: []
     ports:
       - "80:80"
@@ -121,7 +121,7 @@ services:
         VITE_ADMIN_USER: ${VITE_ADMIN_USER}
         VITE_ADMIN_PASS: ${VITE_ADMIN_PASS}
         VITE_ADMIN_API_KEY: ${VITE_ADMIN_API_KEY}
-        CACHE_BUSTER: "172138"
+        CACHE_BUSTER: "172140"
       cache_from: []
     ports:
       - "8080:80"
@@ -139,4 +139,3 @@ services:
 volumes:
   pgdata:
   redisdata:
-
